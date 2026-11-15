@@ -1,0 +1,256 @@
+// VibeTrace's main window. Layout and drawing only; every decision is made in Rust.
+
+import { Theme, Type, Icons, Icon, TipLayer, Toast, ToastKind } from "@vibeware";
+import { AboutDialog, CheckRow } from "brand.slint";
+import { TopBar } from "topbar.slint";
+import { SummaryStrip } from "summary.slint";
+import { HopTable } from "hops.slint";
+import { DetailPanel } from "detail.slint";
+import { HopRow, SummaryInfo, DetailInfo, ResponderRow, EventRow } from "types.slint";
+
+export { HopRow, SummaryInfo, DetailInfo, ResponderRow, EventRow }
+
+export struct ToastItem {
+    id: int,
+    text: string,
+    kind: ToastKind,
+    action: string,
+}
+
+export component AppWindow inherits Window {
+    title: root.window-title;
+    icon: @image-url("../assets/app-128.png");
+    preferred-width: 1120px;
+    preferred-height: 720px;
+    min-width: 1060px;
+    min-height: 520px;
+    // The table's colour: it covers most of the window (one fill per frame, VIBEWARE.md). The
+    // bars and panels draw their own.
+    background: Theme.surface;
+    default-font-family: Type.ui;
+    default-font-size: Type.small;
+    default-font-weight: Type.regular;
+
+    in property <string> window-title: "VibeTrace";
+    in property <string> version;
+    in property <string> status-left;
+    in property <bool> status-warn;
+    in property <string> status-right;
+    in property <[ToastItem]> toasts;
+    in-out property <bool> about-open;
+    // About's version line and its install check (the controller's words and states).
+    in property <string> about-line;
+    in property <[CheckRow]> check-rows;
+    in property <bool> checking;
+    in property <bool> checked;
+
+    // ---- the bar ----
+    in-out property <string> target;
+    in property <bool> target-invalid;
+    in property <[string]> recent;
+    in property <int> family;
+    in property <bool> running;
+    in property <bool> has-trace;
+    in property <int> opt-interval: 1;
+    in property <int> opt-size;
+    in property <int> opt-hops: 1;
+    in property <bool> opt-names: true;
+    in property <bool> opt-asn: true;
+    in property <bool> logging;
+    in property <bool> mtu-running;
+    in property <bool> can-mtu;
+    in property <bool> show-mtu;
+
+    // ---- the answer, the hops, the detail ----
+    in property <SummaryInfo> summary;
+    in property <[HopRow]> rows;
+    in property <string> table-note;
+    in property <int> scroll-to: -1;
+    in property <int> scroll-seq;
+    in property <DetailInfo> detail;
+    in property <[ResponderRow]> responders;
+    in property <string> responders-more;
+    in property <[EventRow]> events;
+    in property <string> events-title: "EVENTS";
+
+    callback toggle-theme();
+    // About: "Check this install" pressed (the controller runs it on a worker, once at a time),
+    // and the website link.
+    callback check-install();
+    callback open-site();
+    callback toast-action(int);
+    callback toast-dismissed(int);
+    // About closed: toasts behind it get their full time again (a toast in sight but out of
+    // reach must not expire).
+    callback dialogs-closed();
+    callback copy-text(string) -> bool;
+    callback target-edited(string);
+    callback target-accepted();
+    callback target-escaped() -> bool;
+    callback trace-clicked();
+    callback family-picked(int);
+    callback recent-picked(int);
+    callback reset();
+    callback copy-report() -> bool;
+    callback save-report();
+    callback option(int, int);
+    callback row-clicked(int);
+    // A double-click on a row: it ends selected.
+    callback row-opened(int);
+    // A key nothing focused took: Up/Down, Escape, Ctrl+C, Ctrl+R. True when Rust used it.
+    callback key(string, bool, bool) -> bool;
+    callback chart-resized(length, length);
+    // The ISP log on or off; the path MTU probe started or stopped.
+    callback toggle-log();
+    callback toggle-mtu();
+
+    public function focus-target() {
+        bar.focus-target();
+    }
+
+    changed about-open => {
+        if (!self.about-open) {
+            root.dialogs-closed();
+        }
+    }
+
+    // Keys that come up from wherever the focus is (buttons, the table).
+    keys := FocusScope {
+        focus-on-click: false;
+        // The window's key catcher is no Tab stop: a Tab past a dialog's last button must not land
+        // here, where Escape would not reach the dialog (About v2 has three stops; 2026-11-04).
+        focus-on-tab-navigation: false;
+        key-pressed(e) => {
+            if (!root.about-open && root.key(e.text, e.modifiers.control, e.modifiers.shift)) {
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            bar := TopBar {
+                target <=> root.target;
+                target-invalid: root.target-invalid;
+                recent: root.recent;
+                family: root.family;
+                running: root.running;
+                has-trace: root.has-trace;
+                opt-interval: root.opt-interval;
+                opt-size: root.opt-size;
+                opt-hops: root.opt-hops;
+                opt-names: root.opt-names;
+                opt-asn: root.opt-asn;
+                logging: root.logging;
+                mtu-running: root.mtu-running;
+                can-mtu: root.can-mtu;
+                inert: root.about-open;
+                target-edited(t) => { root.target-edited(t); }
+                target-accepted => { root.target-accepted(); }
+                target-escaped => { root.target-escaped() }
+                trace-clicked => { root.trace-clicked(); }
+                family-picked(i) => { root.family-picked(i); }
+                recent-picked(i) => { root.recent-picked(i); }
+                reset => { root.reset(); }
+                copy-report => { root.copy-report() }
+                save-report => { root.save-report(); }
+                option(k, v) => { root.option(k, v); }
+                toggle-theme => { root.toggle-theme(); }
+                toggle-log => { root.toggle-log(); }
+                toggle-mtu => { root.toggle-mtu(); }
+                about => {
+                    bar.close-popups();
+                    root.about-open = true;
+                }
+                key(t, c, s) => { root.key(t, c, s) }
+            }
+
+            SummaryStrip { s: root.summary; }
+
+            HopTable {
+                vertical-stretch: 1;
+                rows: root.rows;
+                empty-text: root.table-note;
+                scroll-to: root.scroll-to;
+                scroll-seq: root.scroll-seq;
+                inert: root.about-open;
+                show-mtu: root.show-mtu;
+                row-clicked(i) => { root.row-clicked(i); }
+                row-opened(i) => { root.row-opened(i); }
+                key(t, c, s) => { root.key(t, c, s) }
+            }
+
+            DetailPanel {
+                d: root.detail;
+                responders: root.responders;
+                responders-more: root.responders-more;
+                events: root.events;
+                events-title: root.events-title;
+                chart-resized(w, h) => { root.chart-resized(w, h); }
+            }
+
+            // ---- the status line ----
+            Rectangle {
+                height: 26px;
+                background: Theme.bg;
+                Rectangle { y: 0; height: 1px; background: Theme.line; }
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 12px;
+                    Text {
+                        text: root.status-left;
+                        font-family: Type.mono;
+                        color: root.status-warn ? Theme.danger-text : Theme.ink-3;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.status-right;
+                        font-family: Type.mono;
+                        color: Theme.ink-3;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+
+    // Toasts, bottom right, newest at the bottom: above the detail panel when it shows.
+    VerticalLayout {
+        x: root.width - self.width - 14px;
+        y: root.height - self.height - (root.detail.shown ? 250px : 40px);
+        width: 380px;
+        height: self.preferred-height;
+        spacing: 8px;
+        for t in root.toasts: Toast {
+            text: t.text;
+            kind: t.kind;
+            action: t.action;
+            inert: root.about-open;
+            action-clicked => { root.toast-action(t.id); }
+            dismissed => { root.toast-dismissed(t.id); }
+            copy => { root.copy-text(t.text) }
+        }
+    }
+
+    if root.about-open: AboutDialog {
+        width: root.width;
+        height: root.height;
+        line: root.about-line;
+        rows: root.check-rows;
+        checking: root.checking;
+        checked: root.checked;
+        check => { root.check-install(); }
+        open-site => { root.open-site(); }
+        closed => {
+            root.about-open = false;
+            root.focus-target();
+        }
+    }
+
+    TipLayer {
+        width: root.width;
+        height: root.height;
+    }
+}

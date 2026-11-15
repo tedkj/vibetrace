@@ -1,0 +1,318 @@
+// The hop table: one row per hop, numbers right-aligned in mono, a sparkline per row on one
+// shared scale. One accessibility node per row (VIBEWARE.md): the texts inside are not nodes.
+
+import { ListView } from "std-widgets.slint";
+import { Theme, Type, TipArea } from "@vibeware";
+import { HopRow } from "types.slint";
+
+// Column widths, shared by the head and the rows. The history column is 50 probes of 3 px
+// (a 2 px bar and a 1 px gap) plus 2 px.
+export global Cols {
+    out property <length> num: 24px;
+    out property <length> as: 164px;
+    out property <length> loss: 52px;
+    out property <length> sent: 40px;
+    out property <length> ms: 44px;
+    out property <length> mtu: 44px;
+    out property <length> hist: 152px;
+    out property <length> spacing: 8px;
+}
+
+component Cell inherits Text {
+    font-family: Type.mono;
+    font-size: Type.small;
+    color: Theme.ink-2;
+    horizontal-alignment: right;
+    vertical-alignment: center;
+    overflow: elide;
+    accessible-role: none;
+}
+
+// A cell whose number needs a word of explanation on hover (rate limiting, slow answers).
+component TipCell inherits Rectangle {
+    in property <string> text;
+    in property <color> ink: Theme.ink-2;
+    in property <string> tip;
+    callback clicked();
+    Cell {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        color: Theme.as-text(root.ink);
+    }
+    if root.tip != "": TipArea {
+        tooltip: root.tip;
+        clicked => { root.clicked(); }
+    }
+}
+
+component HopLine inherits Rectangle {
+    in property <HopRow> hop;
+    // The path MTU column (once a probe ran in this trace).
+    in property <bool> show-mtu;
+    callback clicked();
+    // A double-click: its second click let go of the row; this takes it again.
+    callback opened();
+    height: Theme.row-h;
+    accessible-role: list-item;
+    accessible-label: root.hop.tail ? root.hop.addr : "Hop " + root.hop.ttl;
+    accessible-description: root.hop.a11y;
+    accessible-item-selectable: !root.hop.tail;
+    accessible-item-selected: root.hop.selected;
+    accessible-action-default => { root.clicked(); }
+
+    background: root.hop.selected ? Theme.accent-soft : ta.has-hover && !root.hop.tail ? Theme.surface-2 : transparent;
+    ta := TouchArea {
+        clicked => {
+            if (!root.hop.tail) {
+                root.clicked();
+            }
+        }
+        double-clicked => {
+            if (!root.hop.tail) {
+                root.opened();
+            }
+        }
+    }
+    if root.hop.selected: Rectangle {
+        x: 0;
+        width: 2px;
+        background: Theme.accent;
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: Cols.spacing;
+        Cell {
+            width: Cols.num;
+            text: root.hop.ttl;
+            color: root.hop.dest ? Theme.accent : Theme.ink-3;
+        }
+        // Host: the name, then the address in mono ink-3 (or the address alone), then "+2".
+        // When the column is short the name gives way first, then the address (both elide,
+        // a full IPv6 address does not fit at the minimum width); "+2" stays and nothing
+        // crosses into the AS column.
+        host-cell := Rectangle {
+            horizontal-stretch: 1;
+            min-width: 120px;
+            clip: true;
+            HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                if root.hop.host != "": Text {
+                    text: root.hop.host;
+                    font-size: Type.small;
+                    color: root.hop.host-failed ? Theme.ink-3 : Theme.ink;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    min-width: 24px;
+                    horizontal-stretch: 1;
+                    accessible-role: none;
+                }
+                addr := Text {
+                    text: root.hop.addr;
+                    font-family: Type.mono;
+                    font-size: Type.small;
+                    color: root.hop.host != "" || root.hop.silent || root.hop.tail ? Theme.ink-3 : Theme.ink;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    min-width: min(self.preferred-width, 96px);
+                    accessible-role: none;
+                }
+                if root.hop.others != "": others := Text {
+                    text: root.hop.others;
+                    font-family: Type.mono;
+                    font-size: Type.small;
+                    color: Theme.ink-3;
+                    vertical-alignment: center;
+                    min-width: self.preferred-width;
+                    accessible-role: none;
+                }
+            }
+        }
+        Rectangle {
+            width: Cols.as;
+            HorizontalLayout {
+                alignment: start;
+                spacing: 6px;
+                if root.hop.as-num != "": Text {
+                    text: root.hop.as-num;
+                    font-family: Type.mono;
+                    font-size: Type.small;
+                    color: Theme.ink-2;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                if root.hop.as-name != "": Text {
+                    text: root.hop.as-name;
+                    font-size: Type.small;
+                    color: Theme.ink-3;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                    accessible-role: none;
+                }
+            }
+        }
+        TipCell {
+            width: Cols.loss;
+            text: root.hop.loss;
+            ink: root.hop.loss-kind == 1 ? Theme.danger : root.hop.loss-kind >= 2 ? Theme.ink-3 : Theme.ink-2;
+            tip: root.hop.loss-tip;
+            clicked => { root.clicked(); }
+        }
+        Cell { width: Cols.sent; text: root.hop.sent; color: Theme.ink-3; }
+        Cell { width: Cols.ms; text: root.hop.last; }
+        TipCell {
+            width: Cols.ms;
+            text: root.hop.avg;
+            ink: root.hop.avg-tip != "" ? Theme.ink-3 : Theme.ink;
+            tip: root.hop.avg-tip;
+            clicked => { root.clicked(); }
+        }
+        Cell { width: Cols.ms; text: root.hop.best; }
+        Cell { width: Cols.ms; text: root.hop.worst; }
+        Cell { width: Cols.ms; text: root.hop.stdev; }
+        Cell { width: Cols.ms; text: root.hop.jitter; }
+        if root.show-mtu: TipCell {
+            width: Cols.mtu;
+            text: root.hop.mtu;
+            ink: root.hop.mtu-kind == 1 ? Theme.warn : root.hop.mtu-kind == 2 ? Theme.danger : root.hop.mtu-kind >= 3 ? Theme.ink-3 : Theme.ink-2;
+            tip: root.hop.mtu-tip;
+            clicked => { root.clicked(); }
+        }
+        // The sparkline: bars grow from the baseline, lost probes hang from the top. The path
+        // commands are in pixels of a 150 x 26 box, so every bar lands on whole pixels.
+        Rectangle {
+            width: Cols.hist;
+            Path {
+                x: parent.width - 150px;
+                width: 150px;
+                height: 26px;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: 150;
+                viewbox-height: 26;
+                commands: root.hop.bars;
+                fill: root.hop.selected ? Theme.accent : Theme.ink-3;
+            }
+            Path {
+                x: parent.width - 150px;
+                width: 150px;
+                height: 26px;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: 150;
+                viewbox-height: 26;
+                commands: root.hop.ticks;
+                fill: root.hop.loss-kind == 1 ? Theme.danger : Theme.ink-3;
+            }
+        }
+    }
+}
+
+component Head inherits Text {
+    font-family: Type.mono;
+    font-size: Type.small;
+    color: Theme.ink-3;
+    vertical-alignment: center;
+    horizontal-alignment: right;
+    accessible-role: none;
+}
+
+export component HopTable inherits Rectangle {
+    in property <[HopRow]> rows;
+    // Shown in the empty table ("Resolving example.com…", "Waiting for the first answers…").
+    in property <string> empty-text;
+    in property <int> scroll-to: -1;
+    // Bumped when `scroll-to` should be brought into view.
+    in property <int> scroll-seq;
+    in property <bool> inert;
+    in property <bool> show-mtu;
+    callback row-clicked(int);
+    callback row-opened(int);
+    callback key(string, bool, bool) -> bool;
+
+    public function focus-list() {
+        fs.focus();
+    }
+
+    changed scroll-seq => { later.running = true; }
+    // Deferred a tick: the list lays new rows out first (VIBEWARE.md).
+    later := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if (root.scroll-to >= 0) {
+                let top = root.scroll-to * Theme.row-h;
+                if (top < -list.content-y) {
+                    list.content-y = -top;
+                } else if (top + Theme.row-h > -list.content-y + list.visible-height) {
+                    list.content-y = -(top + Theme.row-h - list.visible-height);
+                }
+            }
+        }
+    }
+
+    VerticalLayout {
+        Rectangle {
+            height: 24px;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: Cols.spacing;
+                Head { width: Cols.num; text: "#"; }
+                Head { horizontal-stretch: 1; min-width: 120px; text: "HOST"; horizontal-alignment: left; }
+                Head { width: Cols.as; text: "AS"; horizontal-alignment: left; }
+                Head { width: Cols.loss; text: "LOSS"; }
+                Head { width: Cols.sent; text: "SENT"; }
+                Head { width: Cols.ms; text: "LAST"; }
+                Head { width: Cols.ms; text: "AVG"; }
+                Head { width: Cols.ms; text: "BEST"; }
+                Head { width: Cols.ms; text: "WORST"; }
+                Head { width: Cols.ms; text: "STDEV"; }
+                Head { width: Cols.ms; text: "JITTER"; }
+                if root.show-mtu: Head { width: Cols.mtu; text: "MTU"; }
+                Head { width: Cols.hist; text: "HISTORY"; }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.line;
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            fs := FocusScope {
+                accessible-role: AccessibleRole.list;
+                accessible-label: "Hops";
+                focus-on-tab-navigation: !root.inert;
+                key-pressed(e) => {
+                    if (root.key(e.text, e.modifiers.control, e.modifiers.shift)) {
+                        return accept;
+                    }
+                    reject
+                }
+                list := ListView {
+                    for r in root.rows: HopLine {
+                        hop: r;
+                        show-mtu: root.show-mtu;
+                        clicked => {
+                            fs.focus();
+                            root.row-clicked(r.index);
+                        }
+                        opened => { root.row-opened(r.index); }
+                    }
+                }
+            }
+            if root.rows.length == 0 && root.empty-text != "": Text {
+                text: root.empty-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-size: Type.small;
+                color: Theme.ink-3;
+            }
+        }
+    }
+}

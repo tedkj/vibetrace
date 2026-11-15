@@ -1,0 +1,83 @@
+// VibeWare icons: a 16-unit grid, 1-unit strokes, 0/45/90 degree geometry only (chamfers and
+// octagons instead of curves). Axis-aligned strokes sit on half units and open lines end on
+// whole units, so at 16 px (and 32 px) every straight edge lands on whole pixels: crisp without
+// ClearType. Draw them at 16 px; other sizes scale but lose that.
+
+import { Theme } from "theme.slint";
+
+export global Icons {
+    out property <string> folder: "M 1.5 3.5 L 6 3.5 L 7.5 5 L 14.5 5 L 14.5 12.5 L 1.5 12.5 Z";
+    out property <string> folder-plus: "M 1.5 3.5 L 6 3.5 L 7.5 5 L 14.5 5 L 14.5 12.5 L 1.5 12.5 Z M 8.5 6.5 L 8.5 11 M 6 8.5 L 11 8.5";
+    out property <string> folder-open: "M 1.5 3.5 L 6 3.5 L 7.5 5 L 14.5 5 L 14.5 12.5 L 1.5 12.5 Z M 6.5 10.5 L 10.5 6.5 M 7.5 6.5 L 10.5 6.5 L 10.5 9.5";
+    out property <string> file: "M 3.5 1.5 L 9.5 1.5 L 12.5 4.5 L 12.5 14.5 L 3.5 14.5 Z M 9.5 1.5 L 9.5 4.5 L 12.5 4.5";
+    out property <string> link: "M 7 5.5 L 3.5 5.5 L 1.5 7.5 L 1.5 9.5 L 3.5 11.5 L 7 11.5 M 10 5.5 L 13.5 5.5 L 15.5 7.5 L 15.5 9.5 L 13.5 11.5 L 10 11.5 M 5 8.5 L 12 8.5";
+    out property <string> copy: "M 5.5 5.5 L 11.5 5.5 L 14.5 8.5 L 14.5 14.5 L 5.5 14.5 Z M 2.5 12 L 2.5 2.5 L 12 2.5";
+    out property <string> up: "M 8.5 14 L 8.5 3 M 4.5 7 L 8.5 3 L 12.5 7";
+    out property <string> download: "M 8.5 2 L 8.5 10 M 5 6.5 L 8.5 10 L 12 6.5 M 2.5 11 L 2.5 13.5 L 14.5 13.5 L 14.5 11";
+    out property <string> upload: "M 8.5 10 L 8.5 2 M 5 5.5 L 8.5 2 L 12 5.5 M 2.5 11 L 2.5 13.5 L 14.5 13.5 L 14.5 11";
+    out property <string> transfers: "M 5.5 14 L 5.5 3 M 3 5.5 L 5.5 3 L 8 5.5 M 11.5 3 L 11.5 14 M 9 11.5 L 11.5 14 L 14 11.5";
+    out property <string> refresh: "M 10.5 3.5 L 6.5 3.5 L 3.5 6.5 L 3.5 10.5 L 6.5 13.5 L 10.5 13.5 L 13.5 10.5 L 13.5 6.5 M 11.5 8.5 L 13.5 6.5 L 15.5 8.5";
+    // Refresh turned by 0, 90, 180 and 270 degrees, the frames of a "loading" spin: the software
+    // renderer cannot rotate, and quarter turns keep every edge on the pixel grid.
+    out property <[string]> refresh-turns: [
+        "M 10.5 3.5 L 6.5 3.5 L 3.5 6.5 L 3.5 10.5 L 6.5 13.5 L 10.5 13.5 L 13.5 10.5 L 13.5 6.5 M 11.5 8.5 L 13.5 6.5 L 15.5 8.5",
+        "M 13.5 10.5 L 13.5 6.5 L 10.5 3.5 L 6.5 3.5 L 3.5 6.5 L 3.5 10.5 L 6.5 13.5 L 10.5 13.5 M 8.5 11.5 L 10.5 13.5 L 8.5 15.5",
+        "M 6.5 13.5 L 10.5 13.5 L 13.5 10.5 L 13.5 6.5 L 10.5 3.5 L 6.5 3.5 L 3.5 6.5 L 3.5 10.5 M 5.5 8.5 L 3.5 10.5 L 1.5 8.5",
+        "M 3.5 6.5 L 3.5 10.5 L 6.5 13.5 L 10.5 13.5 L 13.5 10.5 L 13.5 6.5 L 10.5 3.5 L 6.5 3.5 M 8.5 5.5 L 6.5 3.5 L 8.5 1.5",
+    ];
+    out property <string> search: "M 4.5 2.5 L 8.5 2.5 L 10.5 4.5 L 10.5 8.5 L 8.5 10.5 L 4.5 10.5 L 2.5 8.5 L 2.5 4.5 Z M 10 10 L 14.5 14.5";
+    out property <string> x: "M 4 4 L 13 13 M 13 4 L 4 13";
+    out property <string> check: "M 3 8.5 L 6.5 12 L 14 4.5";
+    out property <string> plus: "M 8.5 3 L 8.5 14 M 3 8.5 L 14 8.5";
+    out property <string> chevron-down: "M 4.5 6.5 L 8.5 10.5 L 12.5 6.5";
+    out property <string> chevron-up: "M 4.5 10.5 L 8.5 6.5 L 12.5 10.5";
+    out property <string> chevron-right: "M 6.5 4.5 L 10.5 8.5 L 6.5 12.5";
+    out property <string> server: "M 2.5 2.5 L 12.5 2.5 L 14.5 4.5 L 14.5 8.5 L 2.5 8.5 Z M 2.5 10.5 L 14.5 10.5 L 14.5 14.5 L 2.5 14.5 Z M 4 5.5 L 6 5.5 M 4 12.5 L 6 12.5";
+    out property <string> drive: "M 1.5 8.5 L 4.5 5.5 L 12.5 5.5 L 15.5 8.5 L 15.5 12.5 L 1.5 12.5 Z M 1.5 8.5 L 15.5 8.5 M 12 10.5 L 14 10.5";
+    out property <string> trash: "M 2 4.5 L 15 4.5 M 6.5 4.5 L 6.5 2.5 L 10.5 2.5 L 10.5 4.5 M 4.5 4.5 L 4.5 13 L 6 14.5 L 11 14.5 L 12.5 13 L 12.5 4.5 M 7.5 7 L 7.5 12 M 9.5 7 L 9.5 12";
+    out property <string> pencil: "M 2.5 14.5 L 2.5 11.5 L 11 3 L 14 6 L 5.5 14.5 Z M 9 5 L 12 8";
+    out property <string> edit: "M 2.5 13.5 L 2.5 10.5 L 10 3 L 13 6 L 5.5 13.5 Z M 8 5 L 11 8 M 9 15.5 L 15 15.5";
+    out property <string> settings: "M 2 4.5 L 5 4.5 M 8 4.5 L 15 4.5 M 5.5 2.5 L 7.5 2.5 L 7.5 6.5 L 5.5 6.5 Z M 2 8.5 L 9 8.5 M 12 8.5 L 15 8.5 M 9.5 6.5 L 11.5 6.5 L 11.5 10.5 L 9.5 10.5 Z M 2 12.5 L 4 12.5 M 7 12.5 L 15 12.5 M 4.5 10.5 L 6.5 10.5 L 6.5 14.5 L 4.5 14.5 Z";
+    out property <string> theme: "M 2.5 2.5 L 13.5 2.5 L 13.5 13.5 L 2.5 13.5 Z M 13.5 2.5 L 2.5 13.5 M 13.5 6.5 L 6.5 13.5 M 13.5 10.5 L 10.5 13.5";
+    out property <string> plug: "M 6.5 1 L 6.5 5 M 10.5 1 L 10.5 5 M 3.5 5.5 L 13.5 5.5 L 13.5 8.5 L 10.5 11.5 L 6.5 11.5 L 3.5 8.5 Z M 8.5 12 L 8.5 16";
+    out property <string> unplug: "M 6.5 1 L 6.5 5 M 10.5 1 L 10.5 5 M 3.5 5.5 L 13.5 5.5 L 13.5 8.5 L 10.5 11.5 L 6.5 11.5 L 3.5 8.5 Z M 8.5 12 L 8.5 16 M 1.5 1.5 L 15.5 15.5";
+    out property <string> key: "M 4 2.5 L 6 2.5 L 7.5 4 L 7.5 6 L 6 7.5 L 4 7.5 L 2.5 6 L 2.5 4 Z M 7 7 L 14.5 14.5 M 11 11 L 13 9 M 13 13 L 15 11";
+    out property <string> lock: "M 3.5 7.5 L 13.5 7.5 L 13.5 14.5 L 3.5 14.5 Z M 5.5 7.5 L 5.5 4.5 L 7.5 2.5 L 9.5 2.5 L 11.5 4.5 L 11.5 7.5 M 8.5 10 L 8.5 12";
+    out property <string> alert: "M 8.5 1.5 L 15.5 8.5 L 8.5 15.5 L 1.5 8.5 Z M 8.5 5 L 8.5 9.5 M 8.5 11 L 8.5 12.5";
+    out property <string> info: "M 5.5 2.5 L 11.5 2.5 L 14.5 5.5 L 14.5 11.5 L 11.5 14.5 L 5.5 14.5 L 2.5 11.5 L 2.5 5.5 Z M 8.5 7.5 L 8.5 12 M 8.5 5 L 8.5 6";
+    out property <string> update: "M 5.5 2.5 L 11.5 2.5 L 14.5 5.5 L 14.5 11.5 L 11.5 14.5 L 5.5 14.5 L 2.5 11.5 L 2.5 5.5 Z M 8.5 5 L 8.5 11.5 M 6 9 L 8.5 11.5 L 11 9";
+    out property <string> bookmark: "M 4.5 1.5 L 12.5 1.5 L 12.5 14.5 L 8.5 10.5 L 4.5 14.5 Z";
+    out property <string> sync: "M 1.5 4.5 L 5.5 4.5 L 5.5 12.5 L 1.5 12.5 Z M 11.5 4.5 L 15.5 4.5 L 15.5 12.5 L 11.5 12.5 Z M 5.5 8.5 L 11.5 8.5";
+    out property <string> terminal: "M 2.5 2.5 L 14.5 2.5 L 14.5 14.5 L 2.5 14.5 Z M 5 6 L 7.5 8.5 L 5 11 M 9 11.5 L 12 11.5";
+    out property <string> bar-thick: "M 2.5 2.5 L 14.5 2.5 L 14.5 8.5 L 2.5 8.5 Z M 2 12.5 L 15 12.5";
+    out property <string> bar-thin: "M 2.5 2.5 L 14.5 2.5 L 14.5 5.5 L 2.5 5.5 Z M 2 9.5 L 15 9.5 M 2 12.5 L 15 12.5";
+    out property <string> external: "M 7.5 3.5 L 3.5 3.5 L 3.5 13.5 L 13.5 13.5 L 13.5 9.5 M 9 3.5 L 14 3.5 L 14 8 M 13.5 3.5 L 8 9";
+    out property <string> menu: "M 2 4.5 L 15 4.5 M 2 8.5 L 15 8.5 M 2 12.5 L 15 12.5";
+    out property <string> code: "M 5.5 4.5 L 1.5 8.5 L 5.5 12.5 M 11.5 4.5 L 15.5 8.5 L 11.5 12.5";
+    out property <string> pause: "M 4.5 3.5 L 6.5 3.5 L 6.5 13.5 L 4.5 13.5 Z M 10.5 3.5 L 12.5 3.5 L 12.5 13.5 L 10.5 13.5 Z";
+    out property <string> stop: "M 3.5 3.5 L 13.5 3.5 L 13.5 13.5 L 3.5 13.5 Z";
+}
+
+export component Icon inherits Rectangle {
+    in property <string> path;
+    in property <color> tint: Theme.ink-2;
+    in property <length> size: 16px;
+    width: size;
+    height: size;
+    accessible-role: none;
+    // The stroke is size/16, and Slint fits paths into the box minus the stroke, offset by half
+    // of it: this viewbox (inset by half a grid unit) maps grid units to pixels exactly at any size.
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: 0.5;
+        viewbox-y: 0.5;
+        viewbox-width: 15;
+        viewbox-height: 15;
+        commands: root.path;
+        stroke: root.tint;
+        stroke-width: root.size / 16;
+        stroke-line-join: miter;
+        fill: transparent;
+    }
+}

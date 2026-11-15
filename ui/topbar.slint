@@ -1,0 +1,540 @@
+// The top bar: the target, its family, Trace / Stop, and the actions (reset, copy and save the
+// report, options, theme, about). It draws; Rust decides.
+
+import { Theme, Type, Icons, Icon, Chamfer, Button, ButtonKind, IconButton, Segmented, Checkbox, TipArea } from "@vibeware";
+import { Brand } from "brand.slint";
+import { AppIcons } from "app-icons.slint";
+
+// The target: VibeWare's field look, in mono, with the recent targets one click (or Alt+Down)
+// away. Keys the field has no use for go to Rust (`key`): Up/Down move the hop selection,
+// Escape stops, Ctrl+R resets, Ctrl+L switches the ISP log, and Ctrl+C with nothing selected
+// copies the report. Escape first asks `escaped` (true: the field put its text back and used
+// the key).
+export component TargetField {
+    in-out property <string> text;
+    in property <bool> invalid;
+    in property <bool> inert;
+    in property <[string]> recent;
+    callback edited(string);
+    callback accepted(string);
+    callback recent-picked(int);
+    callback escaped() -> bool;
+    callback key(string, bool, bool) -> bool;
+
+    height: Theme.control-h;
+    min-width: 160px;
+    horizontal-stretch: 1;
+    forward-focus: input;
+    accessible-role: text-input;
+    accessible-label: "Target";
+    accessible-value: root.text;
+    accessible-placeholder-text: "host or address";
+    accessible-action-set-value(v) => {
+        root.text = v;
+        root.edited(v);
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+
+    public function close() {
+        popup.close();
+    }
+
+    function open() {
+        if (root.recent.length > 0) {
+            root.hot = -1;
+            popup.show();
+        }
+    }
+
+    // The highlighted row of the open list (pointer or keys), -1 for none.
+    property <int> hot: -1;
+
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        fill: Theme.bg;
+        stroke: root.invalid ? Theme.danger : input.has-focus ? Theme.focus : Theme.line-strong;
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 2px;
+        spacing: 2px;
+        Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            input := TextInput {
+                // As VibeWare's Field (which cannot host the recent list and the keys): sized and
+                // moved inside the clip, keeping the cursor in view, so a long name stays inside
+                // the border and End shows its end.
+                property <length> computed-x;
+                x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.computed-x));
+                width: max(parent.width - self.text-cursor-width, self.preferred-width);
+                cursor-position-changed(p) => {
+                    if p.x + self.computed-x < 0px {
+                        self.computed-x = -p.x;
+                    } else if p.x + self.computed-x > parent.width - self.text-cursor-width {
+                        self.computed-x = parent.width - p.x - self.text-cursor-width;
+                    }
+                }
+                height: 100%;
+                text <=> root.text;
+                enabled: !root.inert;
+                single-line: true;
+                font-family: Type.mono;
+                font-size: Type.small;
+                font-weight: Type.regular;
+                color: Theme.ink;
+                vertical-alignment: center;
+                selection-background-color: Theme.accent-soft;
+                selection-foreground-color: Theme.ink;
+                edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
+                key-pressed(e) => {
+                    if (e.modifiers.alt && e.text == Key.DownArrow) {
+                        root.open();
+                        return accept;
+                    }
+                    if (e.text == Key.Escape && root.escaped()) {
+                        return accept;
+                    }
+                    let ctrl = e.modifiers.control;
+                    // Ctrl+C copies the field's selection when there is one, the report when not.
+                    let copy = ctrl && (e.text == "c" || e.text == "C") && self.anchor-position-byte-offset == self.cursor-position-byte-offset;
+                    if (copy || e.text == Key.UpArrow || e.text == Key.DownArrow || e.text == Key.Escape || (ctrl && (e.text == "r" || e.text == "R" || e.text == "l" || e.text == "L"))) {
+                        if (root.key(e.text, ctrl, e.modifiers.shift)) {
+                            return accept;
+                        }
+                    }
+                    reject
+                }
+            }
+            if root.text == "": Text {
+                width: 100%;
+                height: 100%;
+                text: "host or address";
+                font-family: Type.mono;
+                font-size: Type.small;
+                color: Theme.ink-3;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+        // The recent targets: a quiet chevron inside the field.
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                accessible-role: button;
+                accessible-label: "Recent targets";
+                accessible-enabled: root.recent.length > 0;
+                accessible-action-default => { root.open(); }
+                background: cta.has-hover && root.recent.length > 0 ? Theme.surface-3 : transparent;
+                Icon {
+                    x: 4px;
+                    y: 4px;
+                    path: Icons.chevron-down;
+                    tint: root.recent.length > 0 ? Theme.ink-2 : Theme.line-strong;
+                }
+                cta := TipArea {
+                    tooltip: "Recent targets (Alt+Down)";
+                    enabled: root.recent.length > 0;
+                    clicked => { root.open(); }
+                }
+            }
+        }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 2px;
+        width: root.width;
+        Chamfer {
+            width: 100%;
+            height: pcol.preferred-height;
+            fill: Theme.surface;
+            stroke: Theme.line-strong;
+            accessible-role: list;
+            accessible-label: "Recent targets";
+            pcol := VerticalLayout {
+                padding: 4px;
+                for r[i] in root.recent: Rectangle {
+                    height: Theme.row-h;
+                    background: i == root.hot ? Theme.surface-3 : transparent;
+                    accessible-role: list-item;
+                    accessible-label: r;
+                    // Pick first: closing the popup first would take this row (and the call) with it.
+                    accessible-action-default => {
+                        root.recent-picked(i);
+                        popup.close();
+                    }
+                    Text {
+                        x: 8px;
+                        width: parent.width - 16px;
+                        height: 100%;
+                        text: r;
+                        overflow: elide;
+                        font-family: Type.mono;
+                        font-size: Type.small;
+                        color: Theme.ink;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.recent-picked(i);
+                            popup.close();
+                        }
+                        changed has-hover => {
+                            if (self.has-hover) {
+                                root.hot = i;
+                            } else if (root.hot == i) {
+                                root.hot = -1;
+                            }
+                        }
+                    }
+                }
+            }
+            FocusScope {
+                init => { self.focus(); }
+                key-pressed(e) => {
+                    if (e.text == Key.DownArrow) {
+                        root.hot = Math.mod(root.hot + 1, root.recent.length);
+                        return accept;
+                    }
+                    if (e.text == Key.UpArrow) {
+                        root.hot = root.hot <= 0 ? root.recent.length - 1 : root.hot - 1;
+                        return accept;
+                    }
+                    if (e.text == Key.Return && root.hot >= 0) {
+                        root.recent-picked(root.hot);
+                        popup.close();
+                        return accept;
+                    }
+                    if (e.text == Key.Escape) {
+                        popup.close();
+                        input.focus();
+                        return accept;
+                    }
+                    reject
+                }
+            }
+        }
+    }
+}
+
+// A labelled row of the options popup.
+component OptionRow inherits HorizontalLayout {
+    in property <string> label;
+    spacing: 12px;
+    Text {
+        text: root.label;
+        width: 76px;
+        font-size: Type.small;
+        color: Theme.ink-2;
+        vertical-alignment: center;
+    }
+    @children
+}
+
+export component TopBar inherits Rectangle {
+    in-out property <string> target;
+    in property <bool> target-invalid;
+    in property <[string]> recent;
+    in property <int> family;
+    // Tracing or resolving: the primary button stops.
+    in property <bool> running;
+    in property <bool> has-trace;
+    in property <int> opt-interval;
+    in property <int> opt-size;
+    in property <int> opt-hops;
+    in property <bool> opt-names;
+    in property <bool> opt-asn;
+    in property <bool> inert;
+    // The ISP log runs; the path MTU probe runs, or could (a trace runs and a hop answered).
+    in property <bool> logging;
+    in property <bool> mtu-running;
+    in property <bool> can-mtu;
+
+    callback target-edited(string);
+    // Enter in the field: trace what it says (a running trace of something else gives way).
+    callback target-accepted();
+    // Escape in the target field: true when it put the traced target back.
+    callback target-escaped() -> bool;
+    callback trace-clicked();
+    callback family-picked(int);
+    callback recent-picked(int);
+    callback reset();
+    callback copy-report() -> bool;
+    callback save-report();
+    // kind: 0 interval, 1 size, 2 max hops, 3 names, 4 AS lookup; value: the option's index or 0/1.
+    callback option(int, int);
+    callback toggle-theme();
+    callback about();
+    callback key(string, bool, bool) -> bool;
+    callback toggle-log();
+    callback toggle-mtu();
+
+    height: 48px;
+    background: Theme.bg;
+
+    public function focus-target() {
+        field.focus-input();
+    }
+
+    public function close-popups() {
+        field.close();
+        options.close();
+    }
+
+    // Copy's moment of "copied" (the check), as VibeWare's CopyButton shows it.
+    property <bool> copied;
+    settle := Timer {
+        interval: 1500ms;
+        running: false;
+        triggered => {
+            root.copied = false;
+            self.running = false;
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 8px;
+        Brand {}
+        Rectangle { width: 10px; }
+        VerticalLayout {
+            alignment: center;
+            field := TargetField {
+                width: 320px;
+                horizontal-stretch: 0;
+                text <=> root.target;
+                invalid: root.target-invalid;
+                inert: root.inert;
+                recent: root.recent;
+                edited(t) => { root.target-edited(t); }
+                accepted => { root.target-accepted(); }
+                recent-picked(i) => { root.recent-picked(i); }
+                escaped => { root.target-escaped() }
+                key(t, c, s) => { root.key(t, c, s) }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Segmented {
+                label: "Address family";
+                options: ["Auto", "IPv4", "IPv6"];
+                selected: root.family;
+                controlled: true;
+                inert: root.inert;
+                changed(i) => { root.family-picked(i); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: root.running ? "Stop" : "Trace";
+                icon: root.running ? Icons.stop : AppIcons.play;
+                kind: root.running ? ButtonKind.secondary : ButtonKind.primary;
+                tooltip: root.running ? "Stop (Esc)" : "Trace (Enter)";
+                inert: root.inert;
+                clicked => { root.trace-clicked(); }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: Icons.refresh;
+                label: "Reset";
+                tooltip: "Reset statistics (Ctrl+R)";
+                enabled: root.running;
+                inert: root.inert;
+                clicked => { root.reset(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: AppIcons.log;
+                label: "ISP log";
+                tooltip: root.logging ? "Stop the ISP log (Ctrl+L)" : "ISP log: record for hours, with outages and DNS checks (Ctrl+L)";
+                active: root.logging;
+                toggle: true;
+                inert: root.inert;
+                clicked => { root.toggle-log(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: AppIcons.mtu;
+                label: "Path MTU";
+                tooltip: root.mtu-running ? "Stop the path MTU probe" : "Path MTU: the largest packet each hop gets";
+                active: root.mtu-running;
+                toggle: true;
+                enabled: root.can-mtu || root.mtu-running;
+                inert: root.inert;
+                clicked => { root.toggle-mtu(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: root.copied ? Icons.check : Icons.copy;
+                label: root.copied ? "Copied" : "Copy report";
+                tooltip: "Copy report (Ctrl+C)";
+                enabled: root.has-trace;
+                inert: root.inert;
+                enter-presses: false;
+                clicked => {
+                    if (root.copy-report()) {
+                        root.copied = true;
+                        settle.running = true;
+                        settle.restart();
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: AppIcons.save;
+                label: "Save report";
+                tooltip: "Save report…";
+                enabled: root.has-trace;
+                inert: root.inert;
+                clicked => { root.save-report(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: Icons.settings;
+                label: "Options";
+                tooltip: "Options";
+                inert: root.inert;
+                clicked => { options.show(); }
+            }
+        }
+        Rectangle {
+            width: 1px;
+            background: Theme.line;
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: Icons.theme;
+                label: "Theme";
+                tooltip: Theme.dark ? "Light theme" : "Dark theme";
+                inert: root.inert;
+                clicked => { root.toggle-theme(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: Icons.info;
+                label: "About";
+                tooltip: "About VibeTrace";
+                inert: root.inert;
+                clicked => { root.about(); }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    options := PopupWindow {
+        close-policy: close-on-click-outside;
+        x: root.width - self.width - 10px;
+        y: root.height - 4px;
+        width: 412px;
+        Chamfer {
+            width: 100%;
+            height: ocol.preferred-height;
+            cut: Theme.cut;
+            fill: Theme.surface;
+            stroke: Theme.line-strong;
+            accessible-role: groupbox;
+            accessible-label: "Options";
+            ocol := VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+                Text {
+                    text: "Options";
+                    font-size: Type.small;
+                    font-weight: Type.strong;
+                    color: Theme.ink;
+                }
+                OptionRow {
+                    label: "Interval";
+                    Segmented {
+                        label: "Interval";
+                        width: 240px;
+                        options: ["0.5 s", "1 s", "2 s", "5 s"];
+                        selected: root.opt-interval;
+                        controlled: true;
+                        changed(i) => { root.option(0, i); }
+                    }
+                }
+                OptionRow {
+                    label: "Packet size";
+                    Segmented {
+                        label: "Packet size";
+                        width: 240px;
+                        options: ["56", "512", "1400"];
+                        selected: root.opt-size;
+                        controlled: true;
+                        changed(i) => { root.option(1, i); }
+                    }
+                    Text {
+                        text: "bytes";
+                        font-size: Type.small;
+                        color: Theme.ink-3;
+                        vertical-alignment: center;
+                    }
+                }
+                OptionRow {
+                    label: "Max hops";
+                    Segmented {
+                        label: "Max hops";
+                        width: 240px;
+                        options: ["15", "30", "64"];
+                        selected: root.opt-hops;
+                        controlled: true;
+                        changed(i) => { root.option(2, i); }
+                    }
+                }
+                Rectangle { height: 2px; }
+                Checkbox {
+                    text: "Show host names (reverse DNS)";
+                    checked: root.opt-names;
+                    controlled: true;
+                    toggled(v) => { root.option(3, v ? 1 : 0); }
+                }
+                Checkbox {
+                    text: "Look up AS numbers (asks Team Cymru's DNS)";
+                    checked: root.opt-asn;
+                    controlled: true;
+                    toggled(v) => { root.option(4, v ? 1 : 0); }
+                }
+                Text {
+                    text: "A new interval, size or hop limit starts the statistics over.";
+                    wrap: word-wrap;
+                    font-size: Type.small;
+                    color: Theme.ink-3;
+                }
+            }
+        }
+    }
+}

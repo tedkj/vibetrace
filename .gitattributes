@@ -1,0 +1,3 @@
+# Vendored crates stay byte for byte as published, CRLF files included: no line-ending
+# conversion under vendor/, so a clone hashes the same as the .crate it came from (RINF-5).
+vendor/** -text

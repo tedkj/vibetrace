@@ -1,0 +1,86 @@
+// The rows and records Rust hands the window. Every string is formatted in Rust; the .slint files
+// only lay them out.
+
+// One hop of the table (or, with `tail`, the quiet "no reply beyond hop N" row).
+export struct HopRow {
+    index: int,          // hop index (TTL - 1); -1 for the tail row
+    ttl: string,
+    host: string,        // reverse DNS, or "" (names off, none found); "name lookup failed"
+    host-failed: bool,   // the reverse lookup could not be answered: `host` in quiet ink
+    addr: string,        // the address, or "no reply"
+    others: string,      // "+2" when a load balancer answers from more addresses
+    as-num: string,
+    as-name: string,
+    loss: string,
+    loss-kind: int,      // 0 none, 1 real loss, 2 rate limited, 3 never answers
+    loss-tip: string,
+    sent: string,
+    last: string,
+    avg: string,
+    avg-tip: string,     // slow to answer: why its latency is not the path's
+    best: string,
+    worst: string,
+    stdev: string,
+    jitter: string,
+    bars: string,        // the sparkline: one 2 px bar per probe (path commands, pixel grid)
+    ticks: string,       // its lost probes
+    mtu: string,         // the largest packet that gets here ("1492", "≥1400", "?", "…", "")
+    mtu-kind: int,       // 0 plain, 1 the size drops here (a router said so), 2 a black hole, 3 not measured, 4 probing
+    mtu-tip: string,
+    dest: bool,
+    silent: bool,
+    tail: bool,
+    selected: bool,
+    a11y: string,        // what a screen reader says about the row
+}
+
+export struct SummaryInfo {
+    started: bool,
+    dest-name: string,
+    dest-addr: string,
+    latency: string,
+    latency-sub: string,
+    loss: string,
+    loss-sub: string,
+    loss-state: int,     // 0 nothing yet, 1 no loss, 2 loss
+    jitter: string,
+    hops: string,
+    hops-sub: string,
+    elapsed: string,
+}
+
+export struct DetailInfo {
+    shown: bool,
+    title: string,       // "Hop 7"
+    host: string,
+    addr: string,
+    as-text: string,
+    mtu: string,         // "MTU 1492" once measured
+    verdict: string,
+    // The chart, in pixels of its own box (Rust knows its width through `chart-resized`).
+    grid: string,
+    range: string,
+    avg: string,
+    loss: string,
+    loss-real: bool,     // its loss marks are real loss (danger), else quiet
+    y-top: string,
+    y-mid: string,
+    y-top-at: length,    // where the labels' gridlines are, in the plot's pixels
+    y-mid-at: length,
+    x-left: string,
+    empty: string,       // instead of a chart: "No replies yet", "No reply from this hop"
+}
+
+export struct ResponderRow {
+    addr: string,
+    host: string,
+    as-text: string,
+    share: string,
+    primary: bool,
+}
+
+export struct EventRow {
+    time: string,
+    text: string,
+    danger: bool,
+}

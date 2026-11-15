@@ -1,0 +1,318 @@
+// The app's name as VibeWare writes it (the mark, "Vibe" in the UI face, the product in mono
+// signal blue), its About box (the same in every VibeWare app: name and version, tagline, three
+// facts, the install check, the sign-off), and the exe icon's drawing.
+
+import { Theme, Type, Icons, Mark, Button, ButtonKind, Dialog, Tips, TipArea } from "@vibeware";
+
+export component Brand inherits HorizontalLayout {
+    in property <string> product: "Trace";
+    spacing: 8px;
+    VerticalLayout {
+        alignment: center;
+        Mark { size: 18px; }
+    }
+    HorizontalLayout {
+        alignment: start;
+        spacing: 1px;
+        Text { text: "Vibe"; font-size: Type.body; font-weight: Type.strong; color: Theme.ink; vertical-alignment: center; accessible-role: none; }
+        Text { text: root.product; font-family: Type.mono; font-size: Type.body; color: Theme.accent; vertical-alignment: center; accessible-role: none; }
+    }
+}
+
+// One row of the install check: its state, its name and one sentence (the controller's words).
+export enum CheckDot { idle, ok, warn, danger }
+export struct CheckRow {
+    name: string,
+    text: string,
+    dot: CheckDot,
+}
+
+// A row's state: a filled square in the status colour, or an empty one before the check.
+component StateDot inherits Rectangle {
+    in property <CheckDot> dot;
+    width: 8px;
+    height: 8px;
+    background: root.dot == CheckDot.ok ? Theme.ok : root.dot == CheckDot.warn ? Theme.warn : root.dot == CheckDot.danger ? Theme.danger : transparent;
+    border-width: root.dot == CheckDot.idle ? 1px : 0px;
+    border-color: Theme.line-strong;
+}
+
+// The row as laid out: dot, name, sentence. One accessible node: "Signature: ...", its state as
+// the description.
+component CheckLine inherits HorizontalLayout {
+    in property <CheckRow> item;
+    in property <bool> dim;
+    spacing: 8px;
+    VerticalLayout {
+        alignment: start;
+        padding-top: 5px;
+        StateDot { dot: root.item.dot; opacity: root.dim ? 0.45 : 1; }
+    }
+    Text { text: root.item.name; width: 64px; color: Theme.ink-3; opacity: root.dim ? 0.45 : 1; accessible-role: none; }
+    Text {
+        text: root.item.text;
+        wrap: word-wrap;
+        horizontal-stretch: 1;
+        min-width: 0px;
+        color: Theme.ink-2;
+        opacity: root.dim ? 0.45 : 1;
+        accessible-label: root.item.name + ": " + root.item.text;
+        accessible-description: root.item.dot == CheckDot.ok ? "ok" : root.item.dot == CheckDot.warn ? "warning" : root.item.dot == CheckDot.danger ? "problem" : "not checked";
+    }
+}
+
+// One of the three facts: its label, its short answer.
+component Fact inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    spacing: 14px;
+    Text { text: root.label; width: 80px; color: Theme.ink-3; }
+    Text { text: root.value; wrap: word-wrap; horizontal-stretch: 1; min-width: 0px; color: Theme.ink-2; }
+}
+
+// The website link: signal-blue text, underlined while hovered or focused; Enter or Space opens it.
+component Link {
+    in property <string> text;
+    in property <string> tooltip;
+    in property <bool> inert;
+    callback clicked();
+    width: t.preferred-width;
+    height: t.preferred-height;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-description: root.tooltip;
+    accessible-action-default => { root.clicked(); }
+    fs := FocusScope {
+        focus-on-tab-navigation: !root.inert;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    t := Text { text: root.text; color: ta.has-hover ? Theme.accent-hover : Theme.accent; accessible-role: none; }
+    if ta.has-hover || fs.has-focus: Rectangle {
+        y: t.height - 2px;
+        height: 1px;
+        background: t.color;
+    }
+    ta := TipArea {
+        tooltip: root.tooltip;
+        mouse-cursor: pointer;
+        clicked => {
+            Tips.shown = false;
+            root.clicked();
+        }
+    }
+}
+
+export component AboutDialog {
+    // "version 0.1.0 · 64-bit · installed for you" (the controller's words).
+    in property <string> line;
+    // Signature, Files, Version.
+    in property <[CheckRow]> rows;
+    in property <bool> checking;
+    in property <bool> checked;
+    in property <bool> top: true;
+    callback closed();
+    callback opening();
+    callback check();
+    callback open-site();
+
+    // The height the scrolled part may take: the window less the Dialog's 24 px above the panel,
+    // a 16 px margin below it, the panel's padding (20 px twice), its title and two 14 px gaps,
+    // and the footer. On a window at its minimum size the middle scrolls; Close stays in sight.
+    property <length> room: root.height - 24px - 16px - 40px - 20px - 28px - foot.preferred-height;
+
+    // The answer in sight when it lands: the middle scrolls to its end, where "This install" is,
+    // so its rows and the note show on a short window too (a keyboard user has no other way to
+    // scroll there; review RAB-4). Where it all fits, this is the top.
+    changed checking => {
+        if (!root.checking) {
+            flick.content-y = Math.min(0px, flick.height - body.preferred-height);
+        }
+    }
+
+    Dialog {
+        width: root.width;
+        height: root.height;
+        title: "About VibeTrace";
+        dialog-width: Math.min(520px, root.width - 32px);
+        top: root.top;
+        scrim-cancels: true;
+        opening => { root.opening(); }
+        cancelled => { root.closed(); }
+        accepted => { root.closed(); }
+        Rectangle {
+            height: Math.min(body.preferred-height, Math.max(96px, root.room));
+            flick := Flickable {
+                content-width: self.width;
+                content-height: body.preferred-height;
+                body := VerticalLayout {
+                    width: flick.width;
+                    height: self.preferred-height;
+                    spacing: 14px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        VerticalLayout {
+                            alignment: center;
+                            Mark { size: 40px; }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: 1px;
+                                Text { text: "Vibe"; font-size: Type.body; font-weight: Type.strong; color: Theme.ink; vertical-alignment: center; }
+                                Text { text: "Trace"; font-family: Type.mono; font-size: Type.body; color: Theme.accent; vertical-alignment: center; }
+                            }
+                            Text { text: root.line; font-family: Type.mono; font-size: Type.small; color: Theme.ink-3; }
+                        }
+                    }
+                    Text {
+                        text: "Every router between you and a host, measured live, and a log of outages your ISP can act on.";
+                        wrap: word-wrap;
+                        font-size: Type.body;
+                        color: Theme.ink;
+                    }
+                    VerticalLayout {
+                        Rectangle { height: 1px; background: Theme.line; }
+                        Fact { label: "Admin rights"; value: "Not needed"; }
+                        Rectangle { height: 1px; background: Theme.line; }
+                        Fact { label: "Network"; value: "Only the hosts you trace and DNS servers, and Check this install when you press it"; }
+                        Rectangle { height: 1px; background: Theme.line; }
+                        Fact { label: "Keeps"; value: "Settings (%APPDATA%) and the ISP log, up to 7 days (%LOCALAPPDATA%), in com.tedkj.vibetrace"; }
+                        Rectangle { height: 1px; background: Theme.line; }
+                    }
+                    Rectangle {
+                        height: box.preferred-height;
+                        background: Theme.surface-2;
+                        border-width: 1px;
+                        border-color: Theme.line;
+                        box := VerticalLayout {
+                            padding-top: 10px;
+                            padding-bottom: 10px;
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 8px;
+                            HorizontalLayout {
+                                spacing: 10px;
+                                Text { text: "This install"; font-size: Type.body; font-weight: Type.strong; color: Theme.ink; vertical-alignment: center; horizontal-stretch: 1; }
+                                Button {
+                                    inert: !root.top;
+                                    enabled: !root.checking;
+                                    text: root.checking ? "Checking…" : root.checked ? "Check again" : "Check this install";
+                                    clicked => { root.check(); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 6px;
+                                CheckLine { item: root.rows[0]; dim: root.checking; }
+                                CheckLine { item: root.rows[1]; dim: root.checking; }
+                                CheckLine { item: root.rows[2]; dim: root.checking; }
+                            }
+                            Rectangle { height: 1px; background: Theme.line; }
+                            Text {
+                                text: "This checks that your files are complete and match the published release. A changed copy could fake this window, but not its code signature: the exe's Properties › Digital Signatures is the check it can't fake.";
+                                wrap: word-wrap;
+                                color: Theme.ink-3;
+                            }
+                        }
+                    }
+                }
+            }
+            // Where the scrolled part is, when it scrolls: a thin bar in the panel's padding.
+            if body.preferred-height > flick.height + 1px: Rectangle {
+                x: parent.width + 9px;
+                width: 3px;
+                y: -flick.content-y * flick.height / flick.content-height;
+                height: flick.height * flick.height / flick.content-height;
+                background: Theme.line-strong;
+            }
+        }
+        foot := VerticalLayout {
+            spacing: 12px;
+            Rectangle { height: 1px; background: Theme.line; }
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    HorizontalLayout {
+                        alignment: start;
+                        Link {
+                            text: "VibeWare website ↗";
+                            tooltip: "getvibeware.com";
+                            inert: !root.top;
+                            clicked => { root.open-site(); }
+                        }
+                    }
+                    Text {
+                        text: "Made in Norway by Ted K. Johansen. No ads, no accounts, no nonsense.";
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        color: Theme.ink-3;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button { inert: !root.top; text: "Close"; kind: ButtonKind.primary; clicked => { root.closed(); } }
+                }
+            }
+        }
+    }
+}
+
+// The exe and taskbar icon (drawn by the icon test into assets/): the VibeWare cut tile in
+// graphite, the app's symbol in signal blue on a 24 grid, strokes a tenth of the size.
+// Stairs (Ted's pick, 2026-10-20): an orthogonal staircase: the route climbs hop by hop
+// from the live dot at your machine.
+// The source drawing is assets/icon.svg: one Path per SVG element, in its paint order.
+export component AppIcon inherits Window {
+    in property <length> size: 256px;
+    width: root.size;
+    height: root.size;
+    background: transparent;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 0 0 L 18 0 L 24 6 L 24 24 L 0 24 Z";
+        fill: #16191d;
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 3 17.8 L 7 17.8 L 7 21.8 L 3 21.8 Z";
+        fill: #7d95ff;
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        // Inset by half the stroke (5 % of 24): grid units then map to pixels 1:1.
+        viewbox-x: 1.2;
+        viewbox-y: 1.2;
+        viewbox-width: 21.6;
+        viewbox-height: 21.6;
+        commands: "M 7 19.8 L 9.2 19.8 L 9.2 13.8 L 15.2 13.8 L 15.2 7.8 L 21 7.8";
+        stroke: #7d95ff;
+        stroke-width: root.size * 0.1;
+        stroke-line-join: miter;
+        fill: transparent;
+    }
+}

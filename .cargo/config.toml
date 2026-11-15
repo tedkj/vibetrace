@@ -1,0 +1,5 @@
+# The C runtime linked in (LINK-1): the exe imports no vcruntime140.dll, so a portable copy on a
+# stick or the per-user install folder (folders others can write) has one DLL less that Windows
+# would look for next to the exe. tests/pe.rs checks the result.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,94 @@
+[package]
+name = "vibetrace"
+version = "0.1.0-preview"
+description = "VibeTrace: Every router between you and a host, measured live, and a log of outages your ISP can act on."
+authors = ["Ted K. Johansen"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/tedkj/vibetrace"
+edition = "2024"
+
+[lib]
+name = "vibetrace"
+# No doc tests (review RRAB-1): a code block in a doc comment would be a test build of its own,
+# one that could bring src/net.rs in. tests/pe.rs checks this line.
+doctest = false
+
+[[bin]]
+name = "vibetrace"
+path = "src/main.rs"
+
+[features]
+# Startup hooks for measurements and live checks (VIBETRACE_DEV_*). Never in a shipped build.
+dev-hooks = []
+
+[dependencies]
+# Pinned exactly, as in VibeFTP: the testing crate below must match it, and the VibeWare
+# design system is tuned to this renderer.
+slint = { version = "=1.18.1", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-software",
+    "software-renderer-path",
+    "accessibility",
+    "unstable-winit-030",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# About's install check: the release list's minisign signature (VibeFTP's updater uses the same
+# crate and key). No dependencies of its own.
+minisign-verify = "0.3"
+# Gdi and Dwm: the window fitted into its monitor's work area at start.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_NetworkManagement_Dns",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinHttp",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_Security_Cryptography_Catalog",
+    "Win32_Security_Cryptography_Sip",
+    "Win32_Security_WinTrust",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_System_Time",
+    "Win32_UI_Controls_Dialogs",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+embed-resource = "3.0.12"
+
+[dev-dependencies]
+i-slint-backend-testing = { version = "=1.18.1", features = ["renderer-software"] }
+png = "0.18"
+# A named pipe that never answers stands in for prefs.json on a dead share (window tests); the
+# exe and check.ps1 in a job object that ends them with the test (tests/pe.rs).
+windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+# Slint 1.18.1 with one fix: a Text losing its repaints after a text layout cache sweep
+# (vendor/README.md). Remove once upstream has it.
+[patch.crates-io]
+i-slint-core = { path = "vendor/i-slint-core-1.18.1" }

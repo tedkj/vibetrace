@@ -1,0 +1,1523 @@
+// VibeWare controls. Every interactive control exposes an accessible role, label and default
+// action: screen readers get them, and the UI tests drive the app through them.
+
+import { Theme, Type } from "theme.slint";
+import { Icons, Icon } from "icons.slint";
+
+// ---------- geometry ----------
+
+// The signature shape: a rectangle with its top-right corner cut at 45 degrees.
+export component Chamfer inherits Rectangle {
+    in property <brush> fill: transparent;
+    in property <brush> stroke: transparent;
+    in property <length> cut: Theme.cut-sm;
+    in property <length> stroke-width: 1px;
+    property <float> w: root.width / 1px;
+    property <float> h: root.height / 1px;
+    property <float> c: root.cut / 1px;
+    property <float> sw: root.stroke-width / 1px;
+    // Slint fits a path into its box minus the stroke width, offset by half of it: a viewbox
+    // inset by half the stroke makes that mapping exactly 1:1, so the outline lands on pixels.
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: root.sw / 2;
+        viewbox-y: root.sw / 2;
+        viewbox-width: root.w - root.sw;
+        viewbox-height: root.h - root.sw;
+        commands: "M 0.5 0.5 L \{root.w - root.c - 0.5} 0.5 L \{root.w - 0.5} \{root.c + 0.5} L \{root.w - 0.5} \{root.h - 0.5} L 0.5 \{root.h - 0.5} Z";
+        fill: root.fill;
+        stroke: root.stroke;
+        stroke-width: root.stroke-width;
+        stroke-line-join: miter;
+    }
+    @children
+}
+
+// The VibeWare mark: the cut tile with a tick in it. "Some things deserve to be finished."
+export component Mark inherits Rectangle {
+    in property <length> size: 20px;
+    in property <color> tile: Theme.ink;
+    in property <color> tick: Theme.bg;
+    width: root.size;
+    height: root.size;
+    accessible-role: image;
+    accessible-label: "VibeWare";
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 0 0 L 18 0 L 24 6 L 24 24 L 0 24 Z";
+        fill: root.tile;
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: 1.2;
+        viewbox-y: 1.2;
+        viewbox-width: 21.6;
+        viewbox-height: 21.6;
+        commands: "M 6 12 L 10.5 16.5 L 18.5 8.5";
+        stroke: root.tick;
+        stroke-width: root.size * 0.1;
+        fill: transparent;
+    }
+}
+
+// Mono, uppercase section label with a hairline: "01 · BUTTONS ——————".
+export component SectionLabel inherits HorizontalLayout {
+    in property <string> index;
+    in property <string> text;
+    spacing: 10px;
+    height: 20px;
+    Text {
+        text: root.index == "" ? root.text : root.index + " · " + root.text;
+        font-family: Type.mono;
+        font-size: Type.small;
+        color: Theme.ink-3;
+        vertical-alignment: center;
+    }
+    VerticalLayout {
+        alignment: center;
+        Rectangle {
+            height: 1px;
+            background: Theme.line;
+        }
+    }
+}
+
+// ---------- tooltips ----------
+
+// One tooltip layer per window, drawn last (place `TipLayer {}` as the window's last child).
+// Controls with a `tooltip` write here: no popup window, so a tooltip never eats a click.
+export global Tips {
+    in-out property <string> text;
+    in-out property <length> x;
+    in-out property <length> y;
+    in-out property <bool> shown;
+}
+
+// Graphite (inverted) label: the tooltip's look. One line is as wide as it needs; a long or
+// multi-line text (a queue row's left-out names) wraps at 420 px and the box grows.
+export component TipBox inherits Rectangle {
+    in property <string> text;
+    width: Math.min(tip.preferred-width, 420px) + 16px;
+    height: Math.max(24px, tip.preferred-height + 8px);
+    background: Theme.ink;
+    tip := Text {
+        x: 8px;
+        width: parent.width - 16px;
+        height: parent.height;
+        text: root.text;
+        wrap: word-wrap;
+        color: Theme.bg;
+        font-size: Type.small;
+        font-weight: Type.regular;
+        vertical-alignment: center;
+    }
+}
+
+export component TipLayer inherits Rectangle {
+    // A tip goes after a while (as on Windows): one whose button was destroyed while it
+    // showed gets no hover change to hide it.
+    property <string> text: Tips.text;
+    changed text => { hide.restart(); }
+    hide := Timer {
+        interval: 5s;
+        running: Tips.shown;
+        triggered => { Tips.shown = false; }
+    }
+    if Tips.shown: TipBox {
+        x: Math.max(4px, Math.min(Tips.x, root.width - self.width - 4px));
+        y: Math.min(Tips.y, root.height - self.height - 4px);
+        text: Tips.text;
+    }
+}
+
+// A hover region with a tip: it shows after 600 ms under the region, once per hover (after the
+// layer hides it, or a click does, it waits for the pointer to come back), and goes when the
+// pointer leaves. Every Button has one; so has text its row cuts short (the queue's errors).
+export component TipArea inherits TouchArea {
+    in property <string> tooltip;
+    property <bool> armed: true;
+
+    changed has-hover => {
+        if (root.has-hover) {
+            root.armed = true;
+        } else if (Tips.text == root.tooltip) {
+            Tips.shown = false;
+        }
+    }
+    // A press hides its own tip at once: the click may change the label, and with it the text the
+    // tip was shown for, which could then no longer be matched to hide it.
+    changed pressed => {
+        if (root.pressed && Tips.text == root.tooltip) {
+            Tips.shown = false;
+        }
+    }
+
+    // Another tip on screen does not hold this one back: it may belong to a button that is gone
+    // (a finished transfer's Cancel), which can no longer hide it.
+    Timer {
+        interval: 600ms;
+        running: root.tooltip != "" && root.armed && root.has-hover && !root.pressed && (!Tips.shown || Tips.text != root.tooltip);
+        triggered => {
+            root.armed = false;
+            Tips.text = root.tooltip;
+            Tips.x = root.absolute-position.x;
+            Tips.y = root.absolute-position.y + root.height + 6px;
+            Tips.shown = true;
+        }
+    }
+}
+
+// ---------- buttons ----------
+
+export enum ButtonKind { primary, secondary, ghost, danger }
+
+export component Button {
+    in property <string> text;
+    in property <string> icon;
+    in property <ButtonKind> kind: ButtonKind.secondary;
+    in property <bool> enabled: true;
+    in property <string> tooltip;
+    // Shown as the accessible label when the button has no text (icon buttons).
+    in property <string> label: root.text;
+    // A toggle that is on (sync browsing, the log): accent ink on a raised face.
+    in property <bool> active;
+    // `active` means on or off (not just a highlight): screen readers hear the button as a toggle
+    // and whether it is on (X15A11Y-6).
+    in property <bool> toggle;
+    // Behind an open dialog: Tab skips it; looks unchanged.
+    in property <bool> inert;
+    // Off: Return goes on to the dialog around it (Copy); Space still presses.
+    in property <bool> enter-presses: true;
+    callback clicked();
+
+    height: Theme.control-h;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-description: root.tooltip;
+    accessible-checkable: root.toggle;
+    accessible-checked: root.active;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.press(); }
+
+    function press() {
+        if (root.enabled) {
+            Tips.shown = false;
+            root.clicked();
+        }
+    }
+
+    property <bool> hot: ta.has-hover && root.enabled;
+    property <bool> down: ta.pressed && root.enabled;
+    property <color> ink: !root.enabled ? Theme.ink-3
+        : root.kind == ButtonKind.primary ? Theme.accent-ink
+        : root.kind == ButtonKind.danger ? Theme.danger-ink
+        : root.kind == ButtonKind.ghost ? (root.active ? Theme.accent : root.hot ? Theme.ink : Theme.ink-2)
+        : Theme.ink;
+    property <color> face: !root.enabled ? (root.kind == ButtonKind.ghost ? transparent : Theme.surface-2)
+        : root.kind == ButtonKind.primary ? (root.hot ? Theme.accent-hover : Theme.accent)
+        : root.kind == ButtonKind.danger ? (root.hot ? Theme.danger.mix(Theme.ink, 85%) : Theme.danger)
+        : root.kind == ButtonKind.ghost ? (root.down ? Theme.line : root.hot || root.active ? Theme.surface-3 : transparent)
+        : (root.down ? Theme.line : root.hot ? Theme.surface-3 : Theme.surface-2);
+    property <color> edge: fs.has-focus ? (root.kind == ButtonKind.secondary || root.kind == ButtonKind.ghost ? Theme.focus : Theme.ink)
+        : root.kind == ButtonKind.secondary ? Theme.line-strong
+        : transparent;
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-tab-navigation: !root.inert;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if ((e.text == Key.Return && root.enter-presses) || e.text == " ") {
+                root.press();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        fill: root.face;
+        stroke: root.edge;
+    }
+
+    row := HorizontalLayout {
+        padding-left: root.text == "" ? 6px : 12px;
+        padding-right: root.text == "" ? 6px : 12px;
+        spacing: 6px;
+        alignment: center;
+        if root.icon != "": VerticalLayout {
+            alignment: center;
+            Icon {
+                path: root.icon;
+                tint: root.ink;
+            }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.ink;
+            font-size: Type.small;
+            font-weight: Type.strong;
+            vertical-alignment: center;
+        }
+    }
+
+    // Enabled even when the button is not, so its tip still shows: that is where it says why it
+    // is off (X15A11Y-5). press() refuses the click.
+    ta := TipArea {
+        tooltip: root.tooltip;
+        clicked => { root.press(); }
+    }
+}
+
+// An icon-only, ghost button with a tooltip. `label` is what screen readers and tests see.
+export component IconButton inherits Button {
+    kind: ButtonKind.ghost;
+    width: Theme.control-h;
+}
+
+// Copy, for text the user cannot select (toasts, confirms, the log): a ghost button with the
+// copy icon, and `caption` beside it or not. `copy()` puts the text on the clipboard and answers
+// whether that worked; then the button says so for a moment ("Copied", the check). It never
+// takes Return, so Enter keeps its meaning in the dialog around it.
+export component CopyButton {
+    in property <string> caption;
+    in property <string> tooltip;
+    in property <bool> enabled: true;
+    in property <bool> inert;
+    callback copy() -> bool;
+    property <bool> done;
+    height: Theme.control-h;
+    min-width: b.min-width;
+    horizontal-stretch: 0;
+    forward-focus: b;
+    b := Button {
+        width: 100%;
+        height: 100%;
+        kind: ButtonKind.ghost;
+        text: root.caption == "" ? "" : root.done ? "Copied" : root.caption;
+        icon: root.done ? Icons.check : Icons.copy;
+        label: root.done ? "Copied" : root.caption != "" ? root.caption : "Copy";
+        tooltip: root.tooltip;
+        enabled: root.enabled;
+        inert: root.inert;
+        enter-presses: false;
+        clicked => {
+            if (root.copy()) {
+                root.done = true;
+                settle.running = true;
+                settle.restart();
+            }
+        }
+    }
+    settle := Timer {
+        interval: 1500ms;
+        running: false;
+        triggered => {
+            root.done = false;
+            self.running = false;
+        }
+    }
+}
+
+// Keyboard hint, as in menus: "F5", "Ctrl+R".
+export component Kbd inherits Text {
+    font-family: Type.mono;
+    font-size: Type.small;
+    color: Theme.ink-3;
+    vertical-alignment: center;
+}
+
+// ---------- inputs ----------
+
+export component Field {
+    in property <string> label;
+    in property <string> placeholder;
+    in-out property <string> text;
+    in property <bool> password;
+    in property <bool> invalid;
+    in property <bool> enabled: true;
+    in property <bool> mono;
+    // Behind an open dialog: no keyboard focus (Tab skips it), looks unchanged.
+    in property <bool> inert;
+    // What screen readers call the field when its visible name is a separate text (a form
+    // row's label); `label` is drawn inside the field, so it cannot serve.
+    in property <string> a11y-name;
+    callback edited(string);
+    callback accepted(string);
+    // Escape, and the focus leaving the field (for fields that put their text back).
+    // `escaped` returns true when the field used the Escape (it goes no further); false lets
+    // it on up, so a dialog around the field cancels.
+    callback escaped() -> bool;
+    callback blurred();
+
+    height: Theme.control-h;
+    min-width: 80px;
+    horizontal-stretch: 1;
+    forward-focus: input;
+    accessible-role: text-input;
+    accessible-label: root.a11y-name != "" ? root.a11y-name : root.label != "" ? root.label : root.placeholder;
+    accessible-value: root.password ? "" : root.text;
+    accessible-placeholder-text: root.placeholder;
+    accessible-enabled: root.enabled;
+    accessible-action-set-value(v) => {
+        root.text = v;
+        root.edited(v);
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+
+    /// Select from `anchor` to `focus` (byte offsets in the text).
+    public function select-range(anchor: int, focus: int) {
+        input.set-selection-offsets(anchor, focus);
+    }
+
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        fill: root.enabled ? Theme.bg : Theme.surface-2;
+        stroke: root.invalid ? Theme.danger : input.has-focus ? Theme.focus : Theme.line-strong;
+    }
+
+    HorizontalLayout {
+        width: 100%;
+        height: 100%;
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        if root.label != "": Text {
+            text: root.label;
+            font-family: Type.mono;
+            font-size: Type.small;
+            color: Theme.ink-3;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            input := TextInput {
+                // A bare TextInput does not scroll, and with `width: 100%` its minimum (its
+                // text's width) grows the clip with it, so a long path ran past the border.
+                // Sized and moved here instead, keeping the cursor in view (as Slint's
+                // LineEdit does).
+                property <length> computed-x;
+                x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.computed-x));
+                width: max(parent.width - self.text-cursor-width, self.preferred-width);
+                cursor-position-changed(p) => {
+                    if p.x + self.computed-x < 0px {
+                        self.computed-x = -p.x;
+                    } else if p.x + self.computed-x > parent.width - self.text-cursor-width {
+                        self.computed-x = parent.width - p.x - self.text-cursor-width;
+                    }
+                }
+                height: 100%;
+                text <=> root.text;
+                enabled: root.enabled && !root.inert;
+                single-line: true;
+                input-type: root.password ? InputType.password : InputType.text;
+                font-family: root.mono ? Type.mono : Type.ui;
+                font-size: Type.small;
+                font-weight: Type.regular;
+                color: root.enabled ? Theme.ink : Theme.ink-3;
+                vertical-alignment: center;
+                selection-background-color: Theme.accent-soft;
+                selection-foreground-color: Theme.ink;
+                edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
+                key-pressed(e) => {
+                    if (e.text == Key.Escape && root.escaped()) {
+                        return accept;
+                    }
+                    reject
+                }
+                changed has-focus => {
+                    if (!self.has-focus) {
+                        root.blurred();
+                    }
+                }
+            }
+            if root.text == "" && root.placeholder != "": Text {
+                width: 100%;
+                height: 100%;
+                text: root.placeholder;
+                font-family: root.mono ? Type.mono : Type.ui;
+                font-size: Type.small;
+                font-weight: Type.regular;
+                color: Theme.ink-3;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+    }
+}
+
+export component Checkbox {
+    in property <string> text;
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    // Controlled: a click only asks (toggled(new value)); the owner sets `checked`.
+    in property <bool> controlled;
+    in property <bool> inert;
+    callback toggled(bool);
+
+    height: 20px;
+    min-width: lay.preferred-width;
+    horizontal-stretch: 0;
+    forward-focus: fs;
+    accessible-role: checkbox;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.toggle(); }
+
+    function toggle() {
+        if (root.enabled) {
+            if (root.controlled) {
+                root.toggled(!root.checked);
+            } else {
+                root.checked = !root.checked;
+                root.toggled(root.checked);
+            }
+        }
+    }
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-tab-navigation: !root.inert;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == " ") {
+                root.toggle();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    lay := HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            Chamfer {
+                width: 14px;
+                height: 14px;
+                cut: 3px;
+                fill: root.checked ? (root.enabled ? Theme.accent : Theme.ink-3) : Theme.bg;
+                stroke: fs.has-focus ? Theme.focus : root.checked ? transparent : (ta.has-hover && root.enabled ? Theme.ink-3 : Theme.line-strong);
+                if root.checked: Path {
+                    width: 100%;
+                    height: 100%;
+                    viewbox-x: 0.75;
+                    viewbox-y: 0.75;
+                    viewbox-width: 12.5;
+                    viewbox-height: 12.5;
+                    commands: "M 3 7 L 6 10 L 11.5 4.5";
+                    stroke: Theme.accent-ink;
+                    stroke-width: 1.5px;
+                    fill: transparent;
+                }
+            }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.enabled ? Theme.ink-2 : Theme.ink-3;
+            font-size: Type.small;
+            font-weight: Type.regular;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.toggle(); }
+    }
+}
+
+// The 45-degree octagon: VibeWare's round (a radio's box and its dot).
+component Octagon inherits Rectangle {
+    in property <brush> fill: transparent;
+    in property <brush> stroke: transparent;
+    in property <length> cut;
+    in property <length> stroke-width: 1px;
+    property <float> s: root.width / 1px;
+    property <float> c: root.cut / 1px;
+    property <float> sw: root.stroke == transparent ? 0 : root.stroke-width / 1px;
+    property <float> o: root.sw / 2;
+    // As Chamfer: a viewbox inset by half the stroke maps 1:1, so the outline lands on pixels.
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: root.o;
+        viewbox-y: root.o;
+        viewbox-width: root.s - root.sw;
+        viewbox-height: root.s - root.sw;
+        commands: "M \{root.c + root.o} \{root.o} L \{root.s - root.c - root.o} \{root.o} L \{root.s - root.o} \{root.c + root.o} L \{root.s - root.o} \{root.s - root.c - root.o} L \{root.s - root.c - root.o} \{root.s - root.o} L \{root.c + root.o} \{root.s - root.o} L \{root.o} \{root.s - root.c - root.o} L \{root.o} \{root.c + root.o} Z";
+        fill: root.fill;
+        stroke: root.stroke;
+        stroke-width: root.stroke-width;
+        stroke-line-join: miter;
+    }
+}
+
+// One option of a set that excludes the others (RadioGroup puts them together): an octagon
+// with a signal-blue ring and dot when chosen. Space chooses; Up/Down ask the group to move the
+// focus (`step`). A focused option carries a focus frame around box and label.
+export component Radio {
+    in property <string> text;
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    // Controlled: a click only asks (chosen()); the owner sets `checked`.
+    in property <bool> controlled;
+    // Behind an open dialog: Tab skips it; looks unchanged.
+    in property <bool> inert;
+    callback chosen();
+    // -1 Up, +1 Down.
+    callback step(int);
+
+    public function focus-option() {
+        fs.focus();
+    }
+
+    height: 20px;
+    min-width: lay.preferred-width;
+    horizontal-stretch: 0;
+    forward-focus: fs;
+    accessible-role: radio-button;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.choose(); }
+
+    function choose() {
+        if (root.enabled) {
+            if (!root.controlled) {
+                root.checked = true;
+            }
+            root.chosen();
+        }
+    }
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-tab-navigation: !root.inert;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == " ") {
+                root.choose();
+                return accept;
+            }
+            if (e.text == Key.UpArrow) {
+                root.step(-1);
+                return accept;
+            }
+            if (e.text == Key.DownArrow) {
+                root.step(1);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    if fs.has-focus: Chamfer {
+        x: -4px;
+        y: -2px;
+        width: lay.preferred-width + 8px;
+        height: parent.height + 4px;
+        cut: 4px;
+        stroke: Theme.focus;
+    }
+
+    lay := HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            Octagon {
+                width: 14px;
+                height: 14px;
+                cut: 4px;
+                fill: Theme.bg;
+                stroke: !root.enabled ? Theme.line
+                    : root.checked ? Theme.accent
+                    : ta.has-hover ? Theme.ink-3 : Theme.line-strong;
+                if root.checked: Octagon {
+                    x: 4px;
+                    y: 4px;
+                    width: 6px;
+                    height: 6px;
+                    cut: 2px;
+                    fill: root.enabled ? Theme.accent : Theme.ink-3;
+                }
+            }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.enabled ? Theme.ink-2 : Theme.ink-3;
+            font-size: Type.small;
+            font-weight: Type.regular;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.choose(); }
+    }
+}
+
+// Options of which at most one is chosen; `selected: -1` is none (nothing pre-selected, so a
+// choice is made on purpose). Each option is a Tab stop; Up/Down move the focus between them
+// and Space chooses (moving does not). `label` names the group for screen readers.
+export component RadioGroup {
+    in property <[string]> options;
+    in-out property <int> selected: -1;
+    in property <string> label;
+    in property <bool> enabled: true;
+    // Controlled: a pick only asks (changed(i)); the owner sets `selected`.
+    in property <bool> controlled;
+    in property <bool> inert;
+    callback changed(int);
+
+    // The option to focus, and a count that tells it to (a `changed` per option).
+    property <int> focus-to: -1;
+    property <int> focus-seq;
+
+    public function focus-first() {
+        root.focus-to = 0;
+        root.focus-seq += 1;
+    }
+
+    min-width: col.min-width;
+    accessible-role: radio-group;
+    accessible-label: root.label;
+
+    col := VerticalLayout {
+        spacing: 8px;
+        for o[i] in root.options: Radio {
+            property <int> seq: root.focus-seq;
+            changed seq => {
+                if (root.focus-to == i) {
+                    self.focus-option();
+                }
+            }
+            // An option made after the group was told (focus-first in the group's init).
+            init => {
+                if (root.focus-to == i) {
+                    self.focus-option();
+                }
+            }
+            text: o;
+            checked: i == root.selected;
+            controlled: true;
+            enabled: root.enabled;
+            inert: root.inert;
+            chosen => {
+                if (!root.controlled) {
+                    root.selected = i;
+                }
+                root.changed(i);
+            }
+            step(d) => {
+                if (i + d >= 0 && i + d < root.options.length) {
+                    root.focus-to = i + d;
+                    root.focus-seq += 1;
+                }
+            }
+        }
+    }
+}
+
+// A row of mutually exclusive options; the chosen one carries the 2 px signal bar.
+export component Segmented {
+    in property <[string]> options;
+    in-out property <int> selected;
+    in property <string> label;
+    // Controlled: a pick only asks (changed(i)); the owner sets `selected`.
+    in property <bool> controlled;
+    // Behind an open dialog: Tab skips it, keys do nothing; looks unchanged.
+    in property <bool> inert;
+    callback changed(int);
+
+    function pick(i: int) {
+        if (!root.controlled) {
+            root.selected = i;
+        }
+        root.changed(i);
+    }
+
+    // Left/Right move to the neighbouring option (the row is one Tab stop, like a radio group).
+    function step(d: int) {
+        let i = Math.clamp(root.selected + d, 0, root.options.length - 1);
+        if (root.options.length > 0 && i != root.selected) {
+            root.pick(i);
+        }
+    }
+
+    height: Theme.control-h;
+    min-width: lay.preferred-width;
+    horizontal-stretch: 0;
+    forward-focus: fs;
+    accessible-role: tab-list;
+    accessible-label: root.label;
+
+    fs := FocusScope {
+        focus-on-tab-navigation: !root.inert;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (root.inert) {
+                return reject;
+            }
+            if (e.text == Key.RightArrow) {
+                root.step(1);
+                return accept;
+            }
+            if (e.text == Key.LeftArrow) {
+                root.step(-1);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        fill: Theme.bg;
+        stroke: fs.has-focus ? Theme.focus : Theme.line-strong;
+    }
+
+    lay := HorizontalLayout {
+        padding: 2px;
+        spacing: 2px;
+        for o[i] in root.options: Rectangle {
+            min-width: t.preferred-width + 22px;
+            background: i == root.selected ? Theme.surface-3 : (sta.has-hover ? Theme.surface-2 : transparent);
+            accessible-role: tab;
+            accessible-label: o;
+            accessible-item-selectable: true;
+            accessible-item-selected: i == root.selected;
+            accessible-action-default => { root.pick(i); }
+            t := Text {
+                text: o;
+                color: i == root.selected ? Theme.ink : Theme.ink-2;
+                font-size: Type.small;
+                font-weight: i == root.selected ? Type.strong : Type.regular;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            if i == root.selected: Rectangle {
+                y: parent.height - 2px;
+                height: 2px;
+                background: Theme.accent;
+            }
+            sta := TouchArea {
+                clicked => { root.pick(i); }
+            }
+        }
+    }
+}
+
+// ---------- menus ----------
+
+export struct MenuEntry {
+    label: string,
+    icon: string,
+    shortcut: string,
+    danger: bool,
+    separator: bool,
+    disabled: bool,
+}
+
+component MenuRow {
+    in property <MenuEntry> entry;
+    in property <bool> current;
+    callback activate();
+    callback hovered();
+    height: root.entry.separator ? 9px : Theme.row-h;
+    if root.entry.separator: Rectangle {
+        y: 4px;
+        height: 1px;
+        background: Theme.line;
+    }
+    if !root.entry.separator: Rectangle {
+        accessible-role: list-item;
+        accessible-label: root.entry.label;
+        accessible-enabled: !root.entry.disabled;
+        accessible-action-default => {
+            if (!root.entry.disabled) {
+                root.activate();
+            }
+        }
+        background: root.current && !root.entry.disabled ? Theme.surface-3 : transparent;
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 10px;
+            spacing: 8px;
+            VerticalLayout {
+                alignment: center;
+                Icon {
+                    path: root.entry.icon;
+                    tint: root.entry.disabled ? Theme.ink-3 : root.entry.danger ? Theme.danger : Theme.ink-2;
+                }
+            }
+            Text {
+                text: root.entry.label;
+                horizontal-stretch: 1;
+                color: root.entry.disabled ? Theme.ink-3 : root.entry.danger ? Theme.danger-text : Theme.ink;
+                font-size: Type.small;
+                font-weight: Type.regular;
+                vertical-alignment: center;
+            }
+            Kbd {
+                text: root.entry.shortcut;
+            }
+        }
+        rta := TouchArea {
+            enabled: !root.entry.disabled;
+            clicked => { root.activate(); }
+            changed has-hover => {
+                if (self.has-hover) {
+                    root.hovered();
+                }
+            }
+        }
+    }
+}
+
+// The menu panel itself (also usable inline). Up/Down move, Enter activates, Escape asks to close.
+export component MenuList {
+    in property <[MenuEntry]> entries;
+    in property <bool> grab-focus;
+    in-out property <int> current: -1;
+    callback activated(int);
+    callback close-requested();
+    height: col.preferred-height;
+
+    function usable(j: int) -> bool {
+        !root.entries[j].separator && !root.entries[j].disabled
+    }
+
+    // Move by one usable row, skipping up to two separators or disabled rows in a row.
+    function step(d: int) {
+        let n = root.entries.length;
+        if (n == 0) {
+            return;
+        }
+        let a = Math.mod(root.current + d + n, n);
+        let b = Math.mod(a + d + n, n);
+        let c = Math.mod(b + d + n, n);
+        root.current = root.usable(a) ? a : root.usable(b) ? b : c;
+    }
+
+    Chamfer {
+        width: 100%;
+        height: col.preferred-height;
+        fill: Theme.surface;
+        stroke: Theme.line-strong;
+        accessible-role: list;
+        col := VerticalLayout {
+            padding: 4px;
+            for e[i] in root.entries: MenuRow {
+                entry: e;
+                current: i == root.current;
+                hovered => { root.current = i; }
+                activate => { root.activated(i); }
+            }
+        }
+        fs := FocusScope {
+            key-pressed(ev) => {
+                if (ev.text == Key.DownArrow) {
+                    root.step(1);
+                    return accept;
+                }
+                if (ev.text == Key.UpArrow) {
+                    root.step(-1);
+                    return accept;
+                }
+                if (ev.text == Key.Return && root.current >= 0) {
+                    root.activated(root.current);
+                    return accept;
+                }
+                if (ev.text == Key.Escape) {
+                    root.close-requested();
+                    return accept;
+                }
+                reject
+            }
+        }
+    }
+    init => {
+        if (root.grab-focus) {
+            fs.focus();
+        }
+    }
+}
+
+// A popup menu. Position it with x/y (relative to its parent), then show().
+export component Menu inherits PopupWindow {
+    in property <[MenuEntry]> entries;
+    in property <length> menu-width: 220px;
+    callback activated(int);
+    width: root.menu-width;
+    MenuList {
+        width: 100%;
+        entries: root.entries;
+        grab-focus: true;
+        activated(i) => {
+            root.activated(i);
+            root.close();
+        }
+        close-requested => { root.close(); }
+    }
+}
+
+// A dropdown: the face shows the choice; the list opens below it. Open, Up/Down move through
+// the list, Enter picks, Escape closes it.
+export component Select {
+    in property <[string]> options;
+    in-out property <int> selected;
+    in property <string> label;
+    in property <string> placeholder;
+    in property <bool> mono;
+    // Controlled: a pick only asks (changed(i)); the owner sets `selected`.
+    in property <bool> controlled;
+    in property <bool> inert;
+    // Optional, for the list: a quiet mono text right of each option (the site's protocol), a
+    // line when there are no options, and an action row after a separator ("Manage sites…").
+    in property <[string]> details;
+    in property <string> empty-text;
+    in property <string> footer;
+    in property <string> footer-icon;
+    callback changed(int);
+    callback footer-clicked();
+
+    function pick(i: int) {
+        if (!root.controlled) {
+            root.selected = i;
+        }
+        root.changed(i);
+        popup.close();
+    }
+
+    // The highlighted row of the open list (pointer or keys), -1 for none; the footer row is
+    // `options.length`.
+    property <int> hot: -1;
+    property <int> rows: root.options.length + (root.footer != "" ? 1 : 0);
+
+    function activate(i: int) {
+        if (i >= 0 && i < root.options.length) {
+            root.pick(i);
+        } else if (i == root.options.length && root.footer != "") {
+            popup.close();
+            root.footer-clicked();
+        }
+    }
+
+    // From the highlight, or from the choice when nothing is highlighted yet.
+    function move(d: int) {
+        if (root.rows > 0) {
+            let from = root.hot >= 0 ? root.hot : root.selected >= 0 ? root.selected : (d > 0 ? -1 : root.rows);
+            root.hot = Math.mod(from + d + root.rows, root.rows);
+        }
+    }
+
+    height: Theme.control-h;
+    min-width: 72px;
+    horizontal-stretch: 0;
+    forward-focus: fs;
+    accessible-role: combobox;
+    accessible-label: root.label;
+    accessible-value: root.selected >= 0 && root.selected < root.options.length ? root.options[root.selected] : "";
+    accessible-expandable: true;
+    accessible-action-default => { root.open(); }
+    accessible-action-expand => { root.open(); }
+
+    public function open() {
+        root.hot = -1;
+        popup.show();
+    }
+
+    public function close() {
+        popup.close();
+    }
+
+    // Up/Down on the closed face step through the choices, as a native combobox does.
+    function step(d: int) {
+        let i = Math.clamp(root.selected + d, 0, root.options.length - 1);
+        if (root.options.length > 0 && i != root.selected) {
+            root.pick(i);
+        }
+    }
+
+    fs := FocusScope {
+        focus-on-tab-navigation: !root.inert;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (root.inert) {
+                return reject;
+            }
+            if (e.text == Key.Return || e.text == " " || (e.text == Key.DownArrow && e.modifiers.alt)) {
+                root.open();
+                return accept;
+            }
+            if (e.text == Key.DownArrow) {
+                root.step(1);
+                return accept;
+            }
+            if (e.text == Key.UpArrow) {
+                root.step(-1);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        fill: sta.has-hover ? Theme.surface-3 : Theme.surface-2;
+        stroke: fs.has-focus ? Theme.focus : Theme.line-strong;
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 6px;
+        spacing: 6px;
+        Text {
+            text: root.accessible-value != "" ? root.accessible-value : root.placeholder;
+            horizontal-stretch: 1;
+            overflow: elide;
+            font-family: root.mono ? Type.mono : Type.ui;
+            font-size: Type.small;
+            font-weight: Type.regular;
+            color: root.accessible-value != "" ? Theme.ink : Theme.ink-3;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                path: Icons.chevron-down;
+                tint: Theme.ink-3;
+            }
+        }
+    }
+    sta := TouchArea {
+        clicked => { root.open(); }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 2px;
+        width: Math.max(root.width, 120px);
+        Chamfer {
+            width: 100%;
+            height: pcol.preferred-height;
+            fill: Theme.surface;
+            stroke: Theme.line-strong;
+            accessible-role: list;
+            pcol := VerticalLayout {
+                padding: 4px;
+                for o[i] in root.options: Rectangle {
+                    height: Theme.row-h;
+                    background: i == root.hot ? Theme.surface-3 : i == root.selected ? Theme.accent-soft : transparent;
+                    accessible-role: list-item;
+                    accessible-label: o;
+                    accessible-description: root.details[i];
+                    accessible-item-selected: i == root.selected;
+                    accessible-action-default => { root.pick(i); }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 8px;
+                        Text {
+                            text: o;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                            font-family: root.mono ? Type.mono : Type.ui;
+                            font-size: Type.small;
+                            font-weight: i == root.selected ? Type.strong : Type.regular;
+                            color: Theme.ink;
+                            vertical-alignment: center;
+                        }
+                        if root.details[i] != "": Text {
+                            text: root.details[i];
+                            font-family: Type.mono;
+                            font-size: Type.small;
+                            color: Theme.ink-3;
+                            vertical-alignment: center;
+                        }
+                    }
+                    TouchArea {
+                        clicked => { root.pick(i); }
+                        changed has-hover => {
+                            if (self.has-hover) {
+                                root.hot = i;
+                            } else if (root.hot == i) {
+                                root.hot = -1; // Enter must not pick a row the pointer has left
+                            }
+                        }
+                    }
+                }
+                if root.options.length == 0 && root.empty-text != "": Rectangle {
+                    height: Theme.row-h;
+                    Text {
+                        x: 8px;
+                        text: root.empty-text;
+                        font-size: Type.small;
+                        color: Theme.ink-3;
+                        vertical-alignment: center;
+                    }
+                }
+                if root.footer != "": Rectangle {
+                    height: 9px;
+                    Rectangle {
+                        y: 4px;
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                }
+                if root.footer != "": Rectangle {
+                    height: Theme.row-h;
+                    background: root.hot == root.options.length ? Theme.surface-3 : transparent;
+                    accessible-role: list-item;
+                    accessible-label: root.footer;
+                    accessible-action-default => { root.activate(root.options.length); }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 8px;
+                        if root.footer-icon != "": VerticalLayout {
+                            alignment: center;
+                            Icon {
+                                path: root.footer-icon;
+                                tint: Theme.ink-2;
+                            }
+                        }
+                        Text {
+                            text: root.footer;
+                            horizontal-stretch: 1;
+                            font-size: Type.small;
+                            color: Theme.ink;
+                            vertical-alignment: center;
+                        }
+                    }
+                    TouchArea {
+                        clicked => { root.activate(root.options.length); }
+                        changed has-hover => {
+                            if (self.has-hover) {
+                                root.hot = root.options.length;
+                            } else if (root.hot == root.options.length) {
+                                root.hot = -1;
+                            }
+                        }
+                    }
+                }
+            }
+            FocusScope {
+                init => { self.focus(); }
+                key-pressed(e) => {
+                    if (e.text == Key.DownArrow) {
+                        root.move(1);
+                        return accept;
+                    }
+                    if (e.text == Key.UpArrow) {
+                        root.move(-1);
+                        return accept;
+                    }
+                    if (e.text == Key.Return && root.hot >= 0) {
+                        root.activate(root.hot);
+                        return accept;
+                    }
+                    if (e.text == Key.Escape) {
+                        popup.close();
+                        return accept;
+                    }
+                    reject
+                }
+            }
+        }
+    }
+}
+
+// ---------- surfaces ----------
+
+// The dialog panel on its own (inline samples); `Dialog` puts it over a scrim.
+export component DialogPanel inherits Chamfer {
+    in property <string> title;
+    cut: Theme.cut;
+    fill: Theme.surface;
+    stroke: Theme.line-strong;
+    height: body.preferred-height;
+    body := VerticalLayout {
+        padding: 20px;
+        spacing: 14px;
+        // A title can name a file or a host: it wraps (a path breaks inside) rather than run
+        // past the panel's edge on one line.
+        Text {
+            text: root.title;
+            wrap: word-wrap;
+            font-size: Type.body;
+            font-weight: Type.strong;
+            color: Theme.ink;
+        }
+        @children
+    }
+}
+
+// A modal dialog over the whole window: scrim, cut panel, title, then the caller's content.
+// Escape cancels, Enter accepts (unless a child takes the key first, or `enter-accepts` is off).
+// `top`: no other dialog above it. It takes the keyboard when shown on top and when the one
+// above it closes; one shown under another leaves the keyboard where it is.
+export component Dialog {
+    in property <string> title;
+    in property <length> dialog-width: 400px;
+    in property <bool> top: true;
+    in property <bool> enter-accepts: true;
+    // A click on the scrim cancels (About); other dialogs ignore it.
+    in property <bool> scrim-cancels;
+    callback cancelled();
+    callback accepted();
+    // Right before it takes the keyboard: the owner closes its popups here, since closing one
+    // later would hand the focus back to whatever was focused before that popup opened.
+    callback opening();
+
+    accessible-role: groupbox;
+    accessible-label: root.title;
+
+    public function grab-focus() {
+        fs.focus();
+    }
+
+    changed top => {
+        if (root.top) {
+            fs.focus();
+        }
+    }
+
+    Rectangle {
+        background: Theme.scrim;
+        TouchArea {
+            clicked => {
+                if (root.scrim-cancels) {
+                    root.cancelled();
+                }
+            }
+            // The wheel stops here too (over the panel as well): the lists behind stay put.
+            scroll-event(e) => { accept }
+        }
+    }
+    // Around the panel, so keys its fields and buttons leave alone (Escape) come up to it.
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                root.cancelled();
+                return accept;
+            }
+            if (e.text == Key.Return && root.enter-accepts) {
+                root.accepted();
+                return accept;
+            }
+            reject
+        }
+        DialogPanel {
+            x: (root.width - self.width) / 2;
+            y: Math.max(24px, (root.height - self.height) / 2.4);
+            width: root.dialog-width;
+            title: root.title;
+            @children
+        }
+    }
+    init => {
+        root.opening();
+        if (root.top) {
+            fs.focus();
+        }
+    }
+}
+
+export enum ToastKind { info, ok, error }
+
+export component Toast {
+    in property <string> text;
+    in property <ToastKind> kind: ToastKind.info;
+    in property <string> action;
+    // Behind an open dialog: its buttons drop out of the Tab order, it looks unchanged.
+    in property <bool> inert;
+    callback action-clicked();
+    callback dismissed();
+    // The text to the clipboard (see CopyButton): it cannot be selected.
+    callback copy() -> bool;
+
+    width: 380px;
+    height: lay.preferred-height;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
+    // Screen readers read a toast out when it appears (X15A11Y-1): an error at once, breaking
+    // into what is being read; anything else when the reader is done.
+    accessible-live-region: root.kind == ToastKind.error ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
+    property <color> signal: root.kind == ToastKind.error ? Theme.danger : root.kind == ToastKind.ok ? Theme.ok : Theme.accent;
+
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        cut: Theme.cut;
+        fill: Theme.surface;
+        stroke: root.kind == ToastKind.error ? Theme.danger.with-alpha(0.55) : Theme.line-strong;
+        Rectangle {
+            x: 0;
+            width: 2px;
+            background: root.signal;
+        }
+    }
+    lay := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: start;
+            padding-top: 6px;
+            Icon {
+                path: root.kind == ToastKind.error ? Icons.alert : root.kind == ToastKind.ok ? Icons.check : Icons.info;
+                tint: root.signal;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.text;
+                wrap: word-wrap;
+                // A path is one long word: without this it is the text's minimum width, and it
+                // pushes the buttons out of the 380 px box and clips the text.
+                min-width: 0px;
+                font-size: Type.small;
+                font-weight: Type.regular;
+                color: Theme.ink;
+            }
+        }
+        if root.action != "": VerticalLayout {
+            alignment: start;
+            Button {
+                text: root.action;
+                kind: ButtonKind.primary;
+                inert: root.inert;
+                clicked => { root.action-clicked(); }
+            }
+        }
+        VerticalLayout {
+            alignment: start;
+            HorizontalLayout {
+                CopyButton {
+                    tooltip: "Copy";
+                    inert: root.inert;
+                    copy => { root.copy() }
+                }
+                IconButton {
+                    inert: root.inert;
+                    icon: Icons.x;
+                    label: "Dismiss";
+                    clicked => { root.dismissed(); }
+                }
+            }
+        }
+    }
+}
+
+// 3 px progress line. value 0..1, or below 0 for "working, size unknown" (a sweeping segment).
+export component ProgressBar inherits Rectangle {
+    in property <float> value: 0;
+    height: 3px;
+    clip: true;
+    accessible-role: progress-indicator;
+    accessible-value: root.value < 0 ? "" : round(Math.clamp(root.value, 0, 1) * 100) + "%";
+    background: Theme.surface-3;
+    if root.value >= 0: Rectangle {
+        x: 0;
+        width: parent.width * Math.clamp(root.value, 0, 1);
+        background: Theme.accent;
+    }
+    if root.value < 0: Rectangle {
+        width: parent.width / 4;
+        x: Math.mod(animation-tick() / 1ms, 1400) / 1400 * (parent.width + self.width) - self.width;
+        background: Theme.accent;
+    }
+}
+
+// ---------- the connection glyph ----------
+
+export enum LinkState { idle, connecting, connected, busy, error }
+
+// The cut tile again, now carrying the connection state. While dialing or transferring a
+// signal dot runs along its outline (the "trace"); idle, it draws nothing new.
+// Two sizes only: 32 px (compact bar, 16 px symbol) and 56 px (thick bar, 32 px symbol).
+export component Glyph {
+    in property <LinkState> state;
+    in property <length> size: 32px;
+    width: root.size;
+    height: root.size;
+    accessible-role: image;
+    accessible-label: root.state == LinkState.connecting ? "Connecting" : root.state == LinkState.connected ? "Connected"
+        : root.state == LinkState.busy ? "Transferring" : root.state == LinkState.error ? "Connection failed" : "Not connected";
+
+    property <color> c: root.state == LinkState.error ? Theme.danger : root.state == LinkState.connected ? Theme.ok : Theme.accent;
+    property <length> cut: Math.round(root.size / 4px) * 1px;
+
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        cut: root.cut;
+        fill: root.c.with-alpha(0.08);
+        stroke: root.c;
+    }
+    Icon {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        size: root.size >= 48px ? 32px : 16px;
+        path: root.state == LinkState.connected ? Icons.check : root.state == LinkState.error ? Icons.alert
+            : root.state == LinkState.busy ? Icons.transfers : Icons.plug;
+        tint: root.c;
+    }
+    if root.state == LinkState.connecting || root.state == LinkState.busy: Rectangle {
+        // Perimeter of the cut tile (0.5 px inset), walked clockwise from the top-left corner.
+        property <float> s: root.size / 1px - 1;
+        property <float> k: root.cut / 1px;
+        property <float> la: self.s - self.k;
+        property <float> lb: self.k * 1.4142;
+        property <float> per: self.la + self.lb + (self.s - self.k) + self.s + self.s;
+        property <float> d: Math.mod(animation-tick() / 1ms, 1800) / 1800 * self.per;
+        property <float> px: self.d < self.la ? self.d
+            : self.d < self.la + self.lb ? self.la + (self.d - self.la) / 1.4142
+            : self.d < self.la + self.lb + self.s - self.k ? self.s
+            : self.d < self.la + self.lb + 2 * self.s - self.k ? self.s - (self.d - self.la - self.lb - (self.s - self.k))
+            : 0;
+        property <float> py: self.d < self.la ? 0
+            : self.d < self.la + self.lb ? (self.d - self.la) / 1.4142
+            : self.d < self.la + self.lb + self.s - self.k ? self.k + (self.d - self.la - self.lb)
+            : self.d < self.la + self.lb + 2 * self.s - self.k ? self.s
+            : self.s - (self.d - self.la - self.lb - 2 * self.s + self.k);
+        x: (self.px + 0.5) * 1px - 2px;
+        y: (self.py + 0.5) * 1px - 2px;
+        width: 4px;
+        height: 4px;
+        background: root.c;
+    }
+}

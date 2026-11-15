@@ -1,0 +1,152 @@
+// The answer first: the destination's numbers in VibeFTP's tile look, under the bar.
+
+import { Theme, Type, Chamfer, Kbd } from "@vibeware";
+import { SummaryInfo } from "types.slint";
+
+component Tile inherits Chamfer {
+    in property <string> caption;
+    in property <string> value;
+    in property <string> sub;
+    in property <color> value-color: Theme.ink;
+    in property <bool> mono-value;
+    fill: Theme.surface;
+    stroke: Theme.line;
+    height: 44px;
+    // One node per tile: "Loss, 0.0%, of 213".
+    accessible-role: text;
+    accessible-label: root.caption;
+    accessible-value: root.value;
+    accessible-description: root.sub;
+    VerticalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+        spacing: 1px;
+        Text {
+            text: root.caption;
+            font-family: Type.mono;
+            font-size: Type.small;
+            color: Theme.ink-3;
+            accessible-role: none;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.value;
+                font-family: root.mono-value ? Type.mono : Type.ui;
+                font-size: Type.body;
+                font-weight: Type.strong;
+                color: root.value-color;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: none;
+            }
+            if root.sub != "": Text {
+                text: root.sub;
+                font-family: Type.mono;
+                font-size: Type.small;
+                color: Theme.ink-3;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+                accessible-role: none;
+            }
+        }
+    }
+}
+
+export component SummaryStrip inherits Rectangle {
+    in property <SummaryInfo> s;
+    height: 64px;
+    background: Theme.bg;
+
+    if !root.s.started: HorizontalLayout {
+        padding-left: 14px;
+        spacing: 6px;
+        alignment: start;
+        Text {
+            text: "Type a host or an address above and press";
+            font-size: Type.small;
+            color: Theme.ink-2;
+            vertical-alignment: center;
+        }
+        Kbd { text: "Enter"; }
+        Text {
+            text: "to trace it. Every hop is measured continuously until you stop.";
+            font-size: Type.small;
+            color: Theme.ink-2;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.s.started: HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            Tile {
+                width: 270px;
+                caption: "DESTINATION";
+                value: root.s.dest-name;
+                sub: root.s.dest-addr;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Tile {
+                width: 250px;
+                caption: "LATENCY";
+                value: root.s.latency;
+                sub: root.s.latency-sub;
+                mono-value: true;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Tile {
+                width: 150px;
+                caption: "LOSS";
+                value: root.s.loss;
+                sub: root.s.loss-sub;
+                mono-value: true;
+                value-color: root.s.loss-state == 2 ? Theme.danger-text : root.s.loss-state == 1 ? Theme.ok-text : Theme.ink;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Tile {
+                width: 104px;
+                caption: "JITTER";
+                value: root.s.jitter;
+                mono-value: true;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Tile {
+                width: 104px;
+                caption: "HOPS";
+                value: root.s.hops;
+                sub: root.s.hops-sub;
+                mono-value: true;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Tile {
+                width: 104px;
+                caption: "ELAPSED";
+                value: root.s.elapsed;
+                mono-value: true;
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}

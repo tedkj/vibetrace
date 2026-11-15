@@ -1,0 +1,69 @@
+// VibeWare design tokens for native (Slint software renderer) apps.
+// Rules: geometry is 0, 45 or 90 degrees; the cut corner (top right) is the signature;
+// lines are hairlines; one accent; status colours only carry status.
+
+export global Theme {
+    in-out property <bool> dark: true;
+
+    // Surfaces, back to front.
+    out property <color> bg: dark ? #111316 : #ebe8e1;
+    out property <color> surface: dark ? #16191d : #f6f4ef;
+    out property <color> surface-2: dark ? #1c2025 : #efece5;
+    out property <color> surface-3: dark ? #252a30 : #e3dfd6;
+    out property <color> line: dark ? #2a2f36 : #d6d1c6;
+    out property <color> line-strong: dark ? #3d434b : #b9b3a6;
+
+    // Ink.
+    out property <color> ink: dark ? #ecebe6 : #15171a;
+    out property <color> ink-2: dark ? #aeb2b9 : #484d55;
+    // 4.5:1 or more on every surface and on a selected row (accent-soft), both themes
+    // (X15A11Y-4, Ted 2026-11-15: lightness only; tests/contrast.rs).
+    out property <color> ink-3: dark ? #999ca3 : #595d64;
+
+    // The one accent: signal blue.
+    out property <color> accent: dark ? #7d95ff : #2b46c4;
+    out property <color> accent-hover: dark ? #99abff : #22399f;
+    out property <color> accent-ink: dark ? #0b1030 : #ffffff;
+    out property <color> accent-soft: dark ? #7d95ff2b : #2b46c41f;
+    out property <color> focus: accent;
+
+    // Status.
+    out property <color> ok: dark ? #4fc283 : #1e8a4c;
+    out property <color> warn: dark ? #e2a24a : #a8650a;
+    out property <color> danger: dark ? #e0564e : #c03a34;
+    out property <color> danger-ink: dark ? #1a0605 : #ffffff;
+    // Status words: ok and warn as text, 4.5:1 or more where text sits (light: darker, same hue);
+    // dots, bars, fills and icons keep ok and warn (X15A11Y-4, Ted 2026-11-15).
+    out property <color> ok-text: dark ? #4fc283 : #176a3a;
+    out property <color> warn-text: dark ? #e2a24a : #865008;
+    // Danger as text: same hue, lighter (dark) or darker (light) to reach 4.5:1 on a selected
+    // row too; buttons and fills keep danger with danger-ink (Ted 2026-11-15).
+    out property <color> danger-text: dark ? #e77f79 : #a7322d;
+    // A colour picked elsewhere (a state's colour) as text: ok, warn and danger become their
+    // text tokens.
+    public pure function as-text(c: color) -> color {
+        return c == ok ? ok-text : c == warn ? warn-text : c == danger ? danger-text : c;
+    }
+
+    // Scrim behind dialogs.
+    out property <color> scrim: dark ? #00000080 : #15171a40;
+
+    // Geometry.
+    out property <length> cut: 10px;      // panels, dialogs, toasts
+    out property <length> cut-sm: 6px;    // buttons, fields, segmented, tiles
+    out property <length> hair: 1px;
+    out property <length> control-h: 28px;
+    out property <length> row-h: 26px;
+}
+
+// Typography, decided on Ted's 3840x1600 at 100% (SLINT-PORT-PLAN 7b): 12 and 14 px only,
+// 450 for running text (it makes up for grayscale antialiasing), 600 for emphasis.
+// 11 px, 13 px and weight 500 are never used.
+export global Type {
+    out property <string> ui: "Segoe UI Variable Text";
+    out property <string> mono: "Cascadia Mono";
+    out property <length> small: 12px;
+    out property <length> body: 14px;
+    out property <int> regular: 450;
+    out property <int> strong: 600;
+}
