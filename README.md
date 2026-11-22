@@ -24,8 +24,11 @@ native Slint interface, with no browser engine inside: one small exe.
 
 - The host you trace, and every router on the way: pings at normal traceroute rates.
 - Your DNS servers: the host's address, each router's name, and its network number through Team
-  Cymru's public DNS service (the router's address is in the question). The ISP log's DNS check
-  asks your DNS servers too.
+  Cymru's public DNS service (the router's address is in the question).
+- While the ISP log runs, two DNS checks every 30 seconds: one through your own DNS servers and
+  one sent straight to Cloudflare's public resolver (1.1.1.1, or 2606:4700:4700::1111 on IPv6).
+  Both ask for `dns.msftncsi.com`, the name Windows itself uses to test DNS. The second one is how
+  the log tells "my ISP's DNS is down" from "the line is down".
 - getvibeware.com, only when you press About's "Check this install": it fetches VibeTrace's signed
   release list to compare your install with it.
 
